@@ -96,6 +96,12 @@ const extractCaption = text => text
 
 // --- Formatting ---
 
+const formatCaption = (start, end) => {
+  if (!end) return ''
+  if (!start || start === end) return formatDate(end)
+  return `${formatDate(start)} – ${formatDate(end)}`
+}
+
 const totalHours = entries => entries.reduce((sum, e) => sum + (e.time || 0), 0)
 
 const formatHours = h => {
@@ -164,5 +170,5 @@ if (typeof window !== 'undefined') {
 }
 
 export const timebank = typeof window == 'undefined'
-  ? { parseEntries, extractDates, extractCaption, parseDate, totalHours, formatHours, formatDate, formatShortDate }
+  ? { parseEntries, extractDates, extractCaption, parseDate, totalHours, formatHours, formatDate, formatShortDate, formatCaption }
   : undefined
