@@ -1,0 +1,122 @@
+{
+  "title": "Table Formatting",
+  "story": [
+    {
+      "type": "markdown",
+      "id": "dd7b949d8adb8d70",
+      "text": "The [[About TimeBank Plugin]] renders its ledger as an HTML `<table>` using inline styles. This page documents the markup structure and styling used."
+    },
+    {
+      "type": "markdown",
+      "id": "97c97ed913018f34",
+      "text": "## Overall Structure"
+    },
+    {
+      "type": "markdown",
+      "id": "a9ca1b1bc48d24d5",
+      "text": "The table is wrapped in a `<div>` with a light sans-serif font at 14px. The table spans the full item width with collapsed borders and a light background. A date label `<div>` sits immediately below the `</table>` closing tag, forming the caption."
+    },
+    {
+      "type": "code",
+      "id": "4f0f973acd3177b1",
+      "text": "<div style=\"margin:8px 0;font-family:sans-serif;font-size:14px\">\n  <table style=\"width:100%;border-collapse:collapse;background:#fafafa;border:1px solid #ddd\">\n    <thead>...</thead>\n    <tbody>...</tbody>\n    <tfoot>...</tfoot>\n  </table>\n  <div style=\"text-align:left;padding:6px 8px;font-weight:600;\n    color:#444;background:#e0e0e0;border-top:2px solid #ccc\">\n    Monday, 1 June 2026 – Sunday, 7 June 2026\n  </div>\n</div>"
+    },
+    {
+      "type": "markdown",
+      "id": "58b34e281b3d9e14",
+      "text": "## Date Label\n\nThe date label sits **below the footer** as a `<div>` immediately after the closing `</table>` tag. It shows the full date range — e.g. `Monday, 1 June 2026 – Sunday, 7 June 2026` — or a single date if only an end date is set.\n\nNote: an HTML `<caption>` element was previously used here but replaced with a `<div>` because Chrome's UA stylesheet forces `caption-side:top` and cannot be overridden by inline styles."
+    },
+    {
+      "type": "code",
+      "id": "352cf522487e357b",
+      "text": "<div style=\"text-align:left;padding:6px 8px;font-weight:600;\n  color:#444;background:#e0e0e0;border-top:2px solid #ccc\">\n  Monday, 1 June 2026 – Sunday, 7 June 2026\n</div>"
+    },
+    {
+      "type": "markdown",
+      "id": "d571ccc9d2ed36f5",
+      "text": "## Header\n\nThe `<thead>` row has a slightly darker grey background. The left column header shows the short end date (e.g. `7 June 2026`). The right column header shows `Time`, right-aligned."
+    },
+    {
+      "type": "code",
+      "id": "a1b2c3d4e5f60001",
+      "text": "<thead>\n  <tr style=\"background:#e8e8e8\">\n    <th style=\"padding:6px 8px;text-align:left;font-weight:600\">7 June 2026</th>\n    <th style=\"padding:6px 8px;text-align:right;font-weight:600\">Time</th>\n  </tr>\n</thead>"
+    },
+    {
+      "type": "markdown",
+      "id": "a1b2c3d4e5f60002",
+      "text": "## Body Rows\n\nEach time entry is a `<tr>` with two `<td>` cells. The entry text is in the left cell. The formatted time (e.g. `2h`, `30m`, `1h 30m`) is in the right cell in grey. Entries with no time have an empty right cell. HTML characters in entry text are escaped."
+    },
+    {
+      "type": "code",
+      "id": "a1b2c3d4e5f60003",
+      "text": "<tr>\n  <td style=\"padding:4px 8px;border-bottom:1px solid #ddd\">Meeting with David: 2 hours</td>\n  <td style=\"padding:4px 8px;border-bottom:1px solid #ddd;text-align:right;color:#666;white-space:nowrap\">2h</td>\n</tr>"
+    },
+    {
+      "type": "markdown",
+      "id": "a1b2c3d4e5f60004",
+      "text": "## Empty State\n\nIf there are no entries, a single row spanning both columns is shown in italic grey:"
+    },
+    {
+      "type": "code",
+      "id": "a1b2c3d4e5f60005",
+      "text": "<tr>\n  <td colspan=\"2\" style=\"padding:8px;color:#999;font-style:italic\">\n    No entries yet. Double-click to add.\n  </td>\n</tr>"
+    },
+    {
+      "type": "markdown",
+      "id": "a1b2c3d4e5f60006",
+      "text": "## Footer (Total Row)\n\nThe `<tfoot>` row is only rendered when the total hours is greater than zero. It has bold weight and a slightly darker background."
+    },
+    {
+      "type": "code",
+      "id": "a1b2c3d4e5f60007",
+      "text": "<tfoot>\n  <tr style=\"font-weight:bold;background:#f0f0f0\">\n    <td style=\"padding:6px 8px\">Total</td>\n    <td style=\"padding:6px 8px;text-align:right\">3h 30m</td>\n  </tr>\n</tfoot>"
+    }
+  ],
+  "journal": [
+    {
+      "type": "create",
+      "item": {
+        "title": "Table Formatting",
+        "story": [
+          {
+            "type": "markdown",
+            "id": "dd7b949d8adb8d70",
+            "text": "The [[About TimeBank Plugin]] renders its ledger as an HTML `<table>` using inline styles. This page documents the markup structure and styling used."
+          }
+        ]
+      },
+      "date": 1780830920000,
+      "certificate": "from marvin"
+    },
+    {
+      "type": "edit",
+      "id": "4f0f973acd3177b1",
+      "item": {
+        "type": "code",
+        "id": "4f0f973acd3177b1",
+        "text": "Updated overall structure: caption replaced with div below table"
+      },
+      "date": 1780833600000
+    },
+    {
+      "type": "edit",
+      "id": "58b34e281b3d9e14",
+      "item": {
+        "type": "markdown",
+        "id": "58b34e281b3d9e14",
+        "text": "Updated caption section: now a div below the table, not an HTML caption element"
+      },
+      "date": 1780833600000
+    },
+    {
+      "type": "edit",
+      "id": "352cf522487e357b",
+      "item": {
+        "type": "code",
+        "id": "352cf522487e357b",
+        "text": "Updated caption code example to show div"
+      },
+      "date": 1780833600000
+    }
+  ]
+}

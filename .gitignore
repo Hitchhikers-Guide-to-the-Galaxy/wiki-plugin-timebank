@@ -1,0 +1,10 @@
+assets
+client/timebank.js
+client/timebank.map
+commons
+coverage
+node_modules
+npm-debug.log
+meta-client.json
+recycle
+status

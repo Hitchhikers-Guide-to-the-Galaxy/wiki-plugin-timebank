@@ -1,0 +1,51 @@
+{
+  "name": "wiki-plugin-timebank",
+  "version": "0.1.0",
+  "description": "Federated Wiki plugin — displays time entries as a dated ledger with totals",
+  "keywords": [
+    "wiki",
+    "federated wiki",
+    "plugin",
+    "timebank",
+    "time tracking"
+  ],
+  "author": {
+    "name": "David Bovill",
+    "url": "https://github.com/opn"
+  },
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "client",
+    "pages",
+    "factory.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opn/wiki-plugin-timebank.git"
+  },
+  "bugs": {
+    "url": "https://github.com/opn/wiki-plugin-timebank/issues"
+  },
+  "homepage": "https://github.com/opn/wiki-plugin-timebank#readme",
+  "engines": {
+    "node": ">=18.x"
+  },
+  "scripts": {
+    "build": "npm run clean; npm run test; node --no-warnings scripts/build-client.js",
+    "about": "wiki -p 3010 -d . --security_legacy",
+    "clean": "rm -f client/timebank.js client/timebank.js.map",
+    "clean-about": "rm -r assets commons recycle status",
+    "prettier:format": "prettier --write './**/*.js'",
+    "prettier:check": "prettier --check ./**/*.js",
+    "test": "node --test",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "esbuild": "^0.28.0",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3"
+  }
+}

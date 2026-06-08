@@ -1,0 +1,88 @@
+{
+  "title": "About TimeBank Plugin",
+  "story": [
+    {
+      "type": "markdown",
+      "id": "21341e728c47230c",
+      "text": "The TimeBank plugin displays a list of time entries as a dated ledger. Each line in the item text is one entry. Lines ending with a time amount are summed into a running total. The column header shows the end date of the batch. See [[Table Formatting]] for details of the HTML markup used to render the table."
+    },
+    {
+      "type": "timebank",
+      "id": "c305fdd22a5ac038",
+      "text": "start: 1 June 2026\nend: 7 June 2026\nMeeting with David: 2 hours\nCode review: 1 hour\nAdmin tasks\nCall with team: 30 mins"
+    },
+    {
+      "type": "markdown",
+      "id": "8952b36884fad15a",
+      "text": "## Entering Time"
+    },
+    {
+      "type": "markdown",
+      "id": "e6bd0f633b537d7c",
+      "text": "Double-click the item to edit entries. Each line is one entry. End a line with a time amount to include it in the total. Lines without a time amount are recorded as notes.\n\nSupported time formats:\n- `2 hours` or `1 hour`\n- `30 mins` or `45 minutes`\n- `1.5h` or `90m`\n- `2 hrs`"
+    },
+    {
+      "type": "markdown",
+      "id": "570314c34d9c6085",
+      "text": "## Date Handling"
+    },
+    {
+      "type": "markdown",
+      "id": "7fcf2dca250dd60f",
+      "text": "Add `start:` and `end:` lines to set the period. The end date appears as the column header in short format e.g. `7 June 2026`. The caption shows the full range e.g. `Monday, 1 June 2026 – Sunday, 7 June 2026`.\n\nAccepted date formats: `7 June 2026`, `June 7 2026`, `2026-06-07`\n\nDates are stored as `item.start` and `item.end` in milliseconds since the Unix epoch. If no `end:` line is present, the end date defaults to the time of the last edit."
+    },
+    {
+      "type": "markdown",
+      "id": "a1b2c3d4e5001001",
+      "text": "## Version"
+    },
+    {
+      "type": "markdown",
+      "id": "a1b2c3d4e5001002",
+      "text": "**Version:** 0.1.1\n\n**Built:** Sun, 07 Jun 2026 13:27 BST\n\n**Change:** Date label moved from HTML `<caption>` to a `<div>` below the table. Chrome's UA stylesheet forces `caption-side:top` on `<caption>` elements and cannot be overridden by inline styles. See [[Table Formatting]] for the updated markup.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/`\n\n**Installed:** `~/.nvm/versions/node/v21.0.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/`"
+    }
+  ],
+  "journal": [
+    {
+      "type": "create",
+      "item": {
+        "title": "About TimeBank Plugin",
+        "story": [
+          {
+            "type": "markdown",
+            "id": "21341e728c47230c",
+            "text": "The TimeBank plugin displays a list of time entries as a dated ledger. Each line in the item text is one entry. Lines ending with a time amount are summed into a running total. The column header shows the end date of the batch."
+          },
+          {
+            "type": "timebank",
+            "id": "c305fdd22a5ac038",
+            "text": "start: 1 June 2026\nend: 7 June 2026\nMeeting with David: 2 hours\nCode review: 1 hour\nAdmin tasks\nCall with team: 30 mins"
+          }
+        ]
+      },
+      "date": 1780824212824,
+      "certificate": "from marvin"
+    },
+    {
+      "type": "edit",
+      "id": "21341e728c47230c",
+      "item": {
+        "type": "markdown",
+        "id": "21341e728c47230c",
+        "text": "Added [[Table Formatting]] link and updated description."
+      },
+      "date": 1780830920000
+    },
+    {
+      "type": "edit",
+      "id": "a1b2c3d4e5001002",
+      "item": {
+        "type": "markdown",
+        "id": "a1b2c3d4e5001002",
+        "text": "Updated to v0.1.1 — caption-side fix"
+      },
+      "date": 1780833600000
+    }
+  ],
+  "plugin": "timebank"
+}
