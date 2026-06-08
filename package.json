@@ -22,12 +22,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/opn/wiki-plugin-timebank.git"
+    "url": "https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank.git"
   },
   "bugs": {
-    "url": "https://github.com/opn/wiki-plugin-timebank/issues"
+    "url": "https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank/issues"
   },
-  "homepage": "https://github.com/opn/wiki-plugin-timebank#readme",
+  "homepage": "https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank#readme",
   "engines": {
     "node": ">=18.x"
   },
