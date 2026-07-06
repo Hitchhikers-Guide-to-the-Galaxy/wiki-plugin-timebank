@@ -29,7 +29,12 @@
     {
       "type": "markdown",
       "id": "7fcf2dca250dd60f",
-      "text": "Add `start:` and `end:` lines to set the period. The end date appears as the column header in short format e.g. `7 June 2026`. The caption shows the full range e.g. `Monday, 1 June 2026 – Sunday, 7 June 2026`.\n\nAccepted date formats: `7 June 2026`, `June 7 2026`, `2026-06-07`\n\nDates are stored as `item.start` and `item.end` in milliseconds since the Unix epoch. If no `end:` line is present, the end date defaults to the time of the last edit."
+      "text": "Add `start:` and `end:` lines to set the period. The end date appears as the column header in short format e.g. `7 June 2026`. The caption shows the full range e.g. `Monday, 1 June 2026 \u2013 Sunday, 7 June 2026`.\n\nAccepted date formats: `7 June 2026`, `June 7 2026`, `2026-06-07`\n\nDates are stored as `item.start` and `item.end` in milliseconds since the Unix epoch. If no `end:` line is present, the end date defaults to the time of the last edit."
+    },
+    {
+      "type": "markdown",
+      "id": "b7d3f19e42a80c11",
+      "text": "## Repositories\n\nSource on GitHub: https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank\n\nPackage on npm: https://www.npmjs.com/package/wiki-plugin-timebank"
     },
     {
       "type": "markdown",
@@ -79,9 +84,20 @@
       "item": {
         "type": "markdown",
         "id": "a1b2c3d4e5001002",
-        "text": "Updated to v0.1.1 — caption-side fix"
+        "text": "Updated to v0.1.1 \u2014 caption-side fix"
       },
       "date": 1780833600000
+    },
+    {
+      "type": "add",
+      "id": "b7d3f19e42a80c11",
+      "item": {
+        "type": "markdown",
+        "id": "b7d3f19e42a80c11",
+        "text": "## Repositories\n\nSource on GitHub: https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank\n\nPackage on npm: https://www.npmjs.com/package/wiki-plugin-timebank"
+      },
+      "after": "7fcf2dca250dd60f",
+      "date": 1783333574330
     }
   ],
   "plugin": "timebank"
