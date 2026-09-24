@@ -7,7 +7,7 @@
 
 import { asSlug, normLabel, normSite, sameSite, ledgerUrl, formatHours, escape, escapeAttr, parseLedgerUrl } from './parse.js'
 import { internalAnchor, externalAnchor, refAnchor, resolveLike } from './links.js'
-import { SIGNOFF_TEXT, suggestTitle, TEMPLATE_TITLE } from './txn.js'
+import { SIGNOFF_TEXT, suggestTitle, TEMPLATE_TITLE, awaitingMinutes } from './txn.js'
 
 export const TOOL_TITLE = 'Ledger Verification Tool'
 
@@ -153,12 +153,48 @@ export const missingPages = result => {
   return out
 }
 
+// "6h awaiting reconcile" — the badge's suffix and the tool's headline.
+export const awaitingText = awaiting => {
+  const minutes = awaitingMinutes(awaiting)
+  return minutes ? `${formatHours(minutes / 60)} awaiting reconcile` : ''
+}
+
+// Incoming transaction pages on watched sites that name this ledger and that
+// it does not carry yet, with the Reconcile button.
+//   awaiting: awaitingEntries() · watched: the sites searched
+export const renderAwaiting = (result, awaiting = [], watched = []) => {
+  const out = []
+  out.push(heading('Awaiting reconcile', 'Transaction pages on watched sites that name this ledger and that it does not carry yet'))
+  const where = watched.length
+    ? `Watched: ${watched.map(escape).join(', ')} — the sites on this ledger's <code>WATCH:</code> lines and the sites of the ledgers it already names.`
+    : 'This ledger watches no other site. Add a line such as <code>WATCH: ledger.timebank.private.fish</code> to receive thank-yous written there.'
+  if (!awaiting.length) {
+    out.push(para(`Nothing awaiting. ${where}`))
+    return out.join('\n')
+  }
+  out.push(table(['Awaiting', 'Transaction page', 'Direction', 'Hours', 'With', 'Written on'], awaiting.map(e => [
+    pill('partial', 'awaiting'),
+    externalAnchor(ledgerUrl({ site: e.facts.page.site, slug: e.facts.page.slug }), linkText(e.facts.page.title || e.label)),
+    escape(e.direction),
+    escape(formatHours(e.time) || '0h'),
+    escape(linkText(e.counterparty.name)),
+    escape(e.facts.page.site)
+  ])))
+  const n = awaiting.length
+  out.push(para(where))
+  out.push(para(`Reconcile opens ${n === 1 ? 'the page' : `the ${n} pages`} beside this tool, forks ${n === 1 ? 'it' : 'them'} to ${escape(result.site)} with the wiki's own fork, writes ${n === 1 ? 'its line' : 'their lines'} into the ledger, and checks again. It needs this browser to be logged in as the owner of ${escape(result.site)}.`))
+  out.push(`<p>${button('reconcile', '', `Reconcile ${plural(n, 'page', 'pages')} — ${awaitingText(awaiting)}`)}${outSpan('reconcile')}</p>`)
+  out.push(`<pre style="font-size:12px;background:#f6f6f6;padding:6px;white-space:pre-wrap">${escape(awaiting.map(e => e.raw).join('\n'))}</pre>`)
+  return out.join('\n')
+}
+
 // model = {
 //   result: verifyItem(), signoffs: signOffs(), groups: findCandidates(),
-//   freeze: { pulled, stale } | null, context: [sites], verified: { at, by }, note
+//   freeze: { pulled, stale } | null, context: [sites], verified: { at, by }, note,
+//   awaiting: awaitingEntries() | undefined, watched: [site]
 // } -> HTML for the TOOL item
 export const renderReport = model => {
-  const { result, signoffs = [], groups = [], freeze = null, context = [], note } = model
+  const { result, signoffs = [], groups = [], freeze = null, context = [], note, awaiting, watched = [] } = model
   const at = (model.verified && model.verified.at) || Date.now()
   const by = (model.verified && model.verified.by) || result.site
   const out = []
@@ -169,6 +205,7 @@ export const renderReport = model => {
     : ''
   const pulled = result.pulled ? `, ${plural(result.pulled, 'entry', 'entries')} pulled from transaction pages` : ''
   out.push(para(`${pill(status[0], status[1])} The ledger ${ledger} on ${escape(result.site)}, checked ${escape(formatStamp(at))} from ${escape(by)}: ${result.matched.length} of ${plural(result.linked, 'linked entry', 'linked entries')} matched${escape(unreachable)}${escape(pulled)}.`))
+  if (awaiting && awaiting.length) out.push(para(`${pill('partial', awaitingText(awaiting))} ${plural(awaiting.length, 'transaction page', 'transaction pages')} on watched sites ${awaiting.length === 1 ? 'names' : 'name'} this ledger and ${awaiting.length === 1 ? 'is' : 'are'} not in it yet — see Awaiting reconcile below.`))
   if (note) out.push(para(`<b>${escape(note)}</b>`))
 
   out.push(heading('Entries', 'Every linked entry and what its counterparty ledger says'))
@@ -176,6 +213,8 @@ export const renderReport = model => {
   out.push(rows.length
     ? table(['Result', 'Direction', 'Hours', 'Label', 'Counterparty ledger', 'Transaction page'], rows)
     : para('This ledger has no linked entries yet.'))
+
+  if (awaiting) out.push(renderAwaiting(result, awaiting, watched))
 
   out.push(heading('Transactions', 'Each transaction page and whether the receiver has signed off'))
   if (signoffs.length) {

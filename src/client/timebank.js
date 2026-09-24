@@ -8,6 +8,12 @@
 // entries from transaction items on pages to its left in the lineup and on its
 // own site, marked as pulled; Freeze writes them into its text.
 //
+// Every ledger also watches other sites (its WATCH lines and the sites of the
+// ledgers it names) for transaction pages that name it and that it does not
+// carry yet — a Thank You Invoice written on the receiver's site. The badge
+// shows their hours as awaiting reconcile; the tool page's Reconcile button
+// opens them, forks them here and freezes their lines in.
+//
 // Clicking the badge opens the plugin's own "Ledger Verification Tool" page
 // beside the ledger. That page carries a timebank item in TOOL mode, which
 // finds the ledger to its left and draws the report: entries with their
@@ -29,8 +35,8 @@ const {
   sameSite, normSite, rewriteEntries, escape
 } = parse
 const { verifyItem, formatVerifyMessages, signOffs } = verify
-const { findCandidates, renderReport, sitesMentioned, TOOL_TITLE } = tool
-const { pullEntries, pageTransactions, transactionCandidates, freezeText } = txn
+const { findCandidates, renderReport, sitesMentioned, awaitingText, TOOL_TITLE } = tool
+const { pullEntries, pageTransactions, transactionCandidates, freezeText, watchedSites, awaitingEntries, reconcilePlan } = txn
 const { resolveLike } = links
 
 // --- Markup ---
@@ -53,6 +59,7 @@ const CSS = `
 .timebank-badge.fail { background: #fde8e8; color: #9b1c1c; }
 .timebank-badge.pending { background: #eee; color: #666; }
 .timebank-pulled-row td { background: #f3f7fc; }
+.timebank-awaiting-row td { background: #fffaf0; }
 .timebank-tool .timebank-badge { cursor: default; }
 `
 
@@ -81,12 +88,18 @@ const tooltip = (result, extra) => {
   return out.join('\n')
 }
 
-const setBadge = ($item, status, title) => {
+const setBadge = ($item, status, title, awaiting = []) => {
   const $badge = $item.find('.timebank-badge').first()
-  if (status === 'none') { $badge.hide(); return }
-  $badge.show().removeClass('ok partial fail pending').addClass(status).text(BADGE_TEXT[status] || status)
+  const waiting = awaiting.length ? awaitingText(awaiting) : ''
+  if (status === 'none' && !waiting) { $badge.hide(); return }
+  const cls = status === 'none' ? 'partial' : status
+  const text = status === 'none' ? waiting : [BADGE_TEXT[status] || status, waiting].filter(Boolean).join(' · ')
+  $badge.show().removeClass('ok partial fail pending').addClass(cls).text(text)
   if (title !== undefined) $badge.attr('title', title)
 }
+
+const awaitingTooltip = awaiting => awaiting.map(e =>
+  `Awaiting reconcile: ${e.raw} (written on ${e.facts.page.site})`).join('\n')
 
 // --- Adapters (wiki globals) ---
 
@@ -205,10 +218,11 @@ const lineupFacts = $item => {
   return out
 }
 
-// Transaction pages on the ledger's own site: every page linking the Time
-// Transaction topic (as pages made from the template do), read in full.
+// Transaction pages on a site — the ledger's own, or one it watches: every
+// page linking the Time Transaction topic (as pages made from the template
+// do), read in full.
 const ownSiteCache = new Map()
-const ownSiteFacts = site => {
+const siteFacts = site => {
   const key = normSite(site)
   const hit = ownSiteCache.get(key)
   if (hit && Date.now() - hit.at < 30000) return hit.promise
@@ -231,8 +245,29 @@ const gather = async ($item, item) => {
   const text = item.text || ''
   if (!extractCommands(text).lineup) return null
   const me = meOf($item)
-  const facts = [...lineupFacts($item), ...(await ownSiteFacts(me.site))]
+  const facts = [...lineupFacts($item), ...(await siteFacts(me.site))]
   return pullEntries(facts, me, parseEntries(text))
+}
+
+// -> { awaiting, watched } — incoming pages on watched sites not yet carried.
+const gatherAwaiting = async ($item, item, pull) => {
+  const text = item.text || ''
+  const me = meOf($item)
+  const watched = watchedSites(text, me.site)
+  if (!watched.length) return { awaiting: [], watched }
+  const facts = (await Promise.all(watched.map(siteFacts))).flat()
+  return { awaiting: awaitingEntries(facts, me, parseEntries(text), pull ? pull.pulled : []), watched }
+}
+
+// Awaiting rows: shown under the ledger, never counted in its total.
+const drawAwaiting = ($item, awaiting) => {
+  const rows = awaiting.map(e => `
+    <tr class="timebank-awaiting-row" title="${escapeAttr(`Written on ${e.facts.page.site}: not in this ledger until it is reconciled on the Ledger Verification Tool`)}">
+      <td style="padding:4px 8px;border-bottom:1px solid #ddd">${resolveLike(e.raw, [])} <span class="timebank-badge partial" style="cursor:default">awaiting reconcile</span></td>
+      <td style="padding:4px 8px;border-bottom:1px solid #ddd;text-align:right;color:#999;white-space:nowrap">${formatHours(e.time)}</td>
+    </tr>`).join('')
+  $item.find('tbody.timebank-awaiting').html(rows)
+  if (awaiting.length) $item.find('.timebank-empty').remove()
 }
 
 // Pulled rows are drawn after emit, so their links go through resolveLike
@@ -266,12 +301,17 @@ const runVerification = async ($item, item, { retry = true } = {}) => {
   const ctx = contextFor($item)
   let result
   let pull
+  let incoming
   try {
     pull = await gather($item, item)
     if ($item.data('timebankRun') !== run) return null
     $item.data('timebankPull', pull)
     if (pull) drawPulled($item, item, pull)
     result = await verifyItem(item, { ...ctx, pulled: pull ? pull.pulled : [] })
+    incoming = await gatherAwaiting($item, item, pull)
+    if ($item.data('timebankRun') !== run) return null
+    $item.data('timebankAwaiting', incoming)
+    drawAwaiting($item, incoming.awaiting)
   } catch (err) {
     if ($item.data('timebankRun') === run) setBadge($item, 'fail', `Verification error: ${err.message || err}`)
     return null
@@ -286,14 +326,14 @@ const runVerification = async ($item, item, { retry = true } = {}) => {
     unmatched: result.unmatched.map(u => ({ key: u.key, site: u.site, slug: u.slug })),
     unreachable: result.unreachable
   }
-  setBadge($item, result.status, tooltip(result))
+  setBadge($item, result.status, tooltip(result, awaitingTooltip(incoming.awaiting)), incoming.awaiting)
   // The neighbourhood may still be loading: retry once when a neighbour lands.
   const onlyUnreachable = result.status === 'fail' && result.unreachable.length > 0 &&
     result.unmatched.every(u => !u.reachable)
   if (retry && onlyUnreachable && typeof $ !== 'undefined') {
     $('body').one('new-neighbor-done', () => runVerification($item, item, { retry: false }))
   }
-  return { result, ctx, pull }
+  return { result, ctx, pull, incoming }
 }
 
 const postNotifications = async messages => {
@@ -356,7 +396,7 @@ const ledgerLeftOf = $tool => {
     .filter(c => c.item && !isTool(c.item))
   if (!cands.length) return { $page, none: true }
   const clicked = lastClicked && lastClicked.key === $page.data('key') && cands.find(c => c.item.id === lastClicked.id)
-  const withLinks = cands.find(c => parseEntries(c.item.text || '').some(e => e.linked) || extractCommands(c.item.text || '').lineup)
+  const withLinks = cands.find(c => parseEntries(c.item.text || '').some(e => e.linked) || extractCommands(c.item.text || '').lineup || extractCommands(c.item.text || '').watch.length)
   const pick = clicked || withLinks || cands[0]
   return { $page, ...pick, count: cands.length }
 }
@@ -374,7 +414,7 @@ const runTool = async ($tool, note) => {
   toolMessage($tool, `Checking <b>${escape(titleOf(led.$item))}</b>…`)
   const out = await runVerification(led.$item, led.item, { retry: false })
   if (!out) return toolMessage($tool, 'The check did not finish; click the badge again.')
-  const { result, ctx, pull } = out
+  const { result, ctx, pull, incoming } = out
   const [signoffs, maps] = await Promise.all([signOffs(result, ctx), searchSitemaps(led.$page, ctx.site)])
   const groups = findCandidates(result, maps)
   const context = contextOf(led.$page)
@@ -383,10 +423,12 @@ const runTool = async ($tool, note) => {
     result, signoffs, groups, context,
     freeze: pull ? { pulled: pull.pulled, stale: pull.stale } : null,
     verified: led.item.verified,
-    note: [note, extra].filter(Boolean).join(' ') || null
+    note: [note, extra].filter(Boolean).join(' ') || null,
+    awaiting: incoming.awaiting,
+    watched: incoming.watched
   })
   $tool.find('.timebank-tool').html(html)
-  $tool.data('timebankTool', { led, result, ctx, groups, pull })
+  $tool.data('timebankTool', { led, result, ctx, groups, pull, incoming })
 }
 
 // Neighbourhood sitemaps plus those of the sites the ledger's page links to.
@@ -414,7 +456,8 @@ const onSend = async ($tool, t, $out) => {
     note = `Send failed: ${err.message || err}`
   }
   $out.text(note)
-  setBadge(led.$item, result.status, tooltip(result, note))
+  const awaiting = (t.incoming && t.incoming.awaiting) || []
+  setBadge(led.$item, result.status, tooltip(result, [note, awaitingTooltip(awaiting)].filter(Boolean).join('\n')), awaiting)
 }
 
 // The browser may save this ledger only when it is logged in as the owner of
@@ -487,6 +530,67 @@ const onFreeze = async ($tool, t, $out) => {
   await saveLedger($tool, led, text, `Froze ${n} pulled ${n === 1 ? 'entry' : 'entries'} into the ledger`)
 }
 
+// --- Reconcile ---
+
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+// Open a page from `site` at the end of the lineup and wait until it has
+// rendered as that site's copy. -> $page | null
+const openRemote = async (title, slug, site) => {
+  wiki.doInternalLink(title, $('.page').last(), site)
+  for (let i = 0; i < 40; i++) {
+    await sleep(250)
+    const $p = $('.page').last()
+    if (String($p.attr('id') || '').split('_rev')[0] !== slug) continue
+    const po = pageObjectOf($p)
+    if (po && po.isRemote && po.isRemote() && $p.find('.item').length) return $p
+  }
+  return null
+}
+
+// After the wiki's fork, read the page back from this origin.
+const confirmForked = async slug => {
+  for (let i = 0; i < 6; i++) {
+    await sleep(750)
+    try {
+      const res = await fetch(`/${slug}.json`, { cache: 'no-store' })
+      if (res.ok) {
+        const page = await res.json()
+        if ((page.journal || []).some(a => a.type === 'fork')) return true
+      }
+    } catch { /* try again */ }
+  }
+  return false
+}
+
+// Open each incoming page beside the tool, fork it here with the wiki's own
+// fork action (pageHandler.put, as the fork flag does), then freeze their
+// lines into the ledger and check again.
+const onReconcile = async ($tool, t, $out) => {
+  const { led, result, incoming } = t
+  const awaiting = (incoming && incoming.awaiting) || []
+  if (!awaiting.length) return $out.text('Nothing awaiting reconcile.')
+  const why = whyNotWritable(led, result.site, 'reconcile')
+  if (why) return $out.text(why)
+  const own = await fetchSitemap(location.host)
+  const plan = reconcilePlan(led.item.text || '', awaiting, (own || []).map(p => p.slug))
+  const done = []
+  for (const f of plan.forks) {
+    $out.text(`Opening ${f.title} from ${f.site}…`)
+    const $p = await openRemote(f.title, f.slug, f.site)
+    if (!$p) return $out.text(`Stopped: ${f.title} did not open from ${f.site}, so nothing was forked or frozen after it.${done.length ? ` Forked so far: ${done.join(', ')}.` : ''}`)
+    $out.text(`Forking ${f.title} to ${location.host}…`)
+    wiki.pageHandler.put($p, { type: 'fork', site: f.site })
+    if (!(await confirmForked(f.slug))) {
+      return $out.text(`Stopped: the fork of ${f.title} was not confirmed by ${location.host}, so the ledger was not changed. Log in as the site owner and reconcile again.`)
+    }
+    done.push(f.title)
+  }
+  $out.text('Freezing the lines into the ledger…')
+  const kept = plan.kept.length ? `; ${plan.kept.map(k => k.title).join(', ')} already on ${location.host}, not forked over` : ''
+  await saveLedger($tool, led, plan.text, `Reconciled ${awaiting.length} incoming ${awaiting.length === 1 ? 'page' : 'pages'}: forked ${done.length}${kept}, lines frozen into the ledger`)
+}
+
 const onToolClick = ($tool, e) => {
   const $btn = $(e.currentTarget)
   const action = $btn.attr('data-timebank-action')
@@ -506,6 +610,12 @@ const onToolClick = ($tool, e) => {
     const $out = outFor($tool, `fix-${gi}-${ci}`)
     if (!t) return stale($out)
     onFix($tool, t, gi, ci, $out).catch(err => $out.text(`Fix failed: ${err.message || err}`))
+  } else if (action === 'reconcile') {
+    const $out = outFor($tool, 'reconcile')
+    if (!t) return stale($out)
+    if ($btn.prop('disabled')) return
+    $btn.prop('disabled', true)
+    onReconcile($tool, t, $out).catch(err => $out.text(`Reconcile failed: ${err.message || err}`)).finally(() => $btn.prop('disabled', false))
   } else if (action === 'freeze') {
     const $out = outFor($tool, 'freeze')
     if (!t) return stale($out)
@@ -534,12 +644,13 @@ const emit = ($item, item, { check = true } = {}) => {
   const entries = parseEntries(item.text || '')
   const total = totalHours(entries)
   const caption = extractCaption(item.text || '')
-  const { lineup } = extractCommands(item.text || '')
+  const { lineup, watch } = extractCommands(item.text || '')
   const linked = entries.some(e => e.linked)
+  const watching = watch.length > 0
   registerSites(entries)
 
   const columnHeader = dates.end ? formatShortDate(item.end) : 'Entry'
-  const badge = linked || lineup
+  const badge = linked || lineup || watching
     ? `<span class="timebank-badge pending" title="${escapeAttr('Checking counterparty ledgers…')}">${BADGE_TEXT.pending}</span>`
     : ''
 
@@ -566,6 +677,7 @@ const emit = ($item, item, { check = true } = {}) => {
           ${rows || `<tr class="timebank-empty"><td colspan="2" style="padding:8px;color:#999;font-style:italic">${empty}</td></tr>`}
         </tbody>
         <tbody class="timebank-pulled"></tbody>
+        <tbody class="timebank-awaiting"></tbody>
         <tfoot class="timebank-total">${total > 0 ? totalRow(total) : ''}</tfoot>
       </table>
       ${caption ? `<div style="padding:8px;color:#555;font-style:italic;border-top:1px solid #ddd;background:#fafafa">${markup(caption)}</div>` : ''}
@@ -573,7 +685,7 @@ const emit = ($item, item, { check = true } = {}) => {
 
   // Everything above is synchronous; the async check draws only the badge and
   // the pulled rows. Deferred a tick so the item is attached to its .page.
-  if ((linked || lineup) && check) setTimeout(() => runVerification($item, item), 0)
+  if ((linked || lineup || watching) && check) setTimeout(() => runVerification($item, item), 0)
 }
 
 const bind = ($item, item) => {
@@ -584,7 +696,7 @@ const bind = ($item, item) => {
   $item.on('click', '.timebank-badge', e => {
     e.stopPropagation()
     e.preventDefault()
-    if ($(e.currentTarget).closest('.timebank-pulled-row').length) return
+    if ($(e.currentTarget).closest('.timebank-pulled-row, .timebank-awaiting-row').length) return
     onBadgeClick($item, item)
   })
   $item.on('dblclick', '.timebank-badge', e => e.stopPropagation())

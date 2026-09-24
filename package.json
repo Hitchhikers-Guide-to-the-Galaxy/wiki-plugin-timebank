@@ -1,6 +1,6 @@
 {
   "name": "wiki-plugin-timebank",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Federated Wiki plugin — displays time entries as a dated ledger with totals",
   "keywords": [
     "wiki",

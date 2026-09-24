@@ -220,7 +220,7 @@ describe('timebank 0.2.0', () => {
 
     test('extractCommands normalises NOTIFY urls', () => {
       const c = extractCommands('NOTIFY: ntfy.sh/timebank-david')
-      assert.deepEqual(c, { notify: 'https://ntfy.sh/timebank-david', lineup: false, tool: false })
+      assert.deepEqual(c, { notify: 'https://ntfy.sh/timebank-david', lineup: false, tool: false, watch: [] })
       assert.equal(extractCommands('NOTIFY: http://pi:4280/timebank').notify, 'http://pi:4280/timebank')
       assert.equal(extractCommands('Gardening: 1h').notify, null)
     })
@@ -1069,4 +1069,143 @@ test('a line written against the original page freezes the fork gathered on the 
   const written = parseEntries('[http://david.localhost:4242/view/soup-for-alice-5-september Soup for Alice, 5 September] from [http://david.localhost:4242/view/davids-ledger D]: 1 hour')
   const r = pullEntries(pageTransactions(soup, 'demo.localhost:4242'), { site: 'demo.localhost:4242', slug: 'alices-ledger' }, written)
   assert.deepEqual([r.pulled.length, r.frozen.length], [0, 1])
+})
+
+describe('timebank 0.5.0 Thank You Invoice: watched sites, awaiting, Reconcile', () => {
+  const {
+    extractCommands, parseWatch, isCommand, extractCaption, parseEntries, pageTransactions, watchedSites,
+    awaitingEntries, awaitingMinutes, reconcilePlan, pullEntries, verifyItem, renderReport, renderAwaiting, awaitingText
+  } = timebank
+
+  const ALICE = 'https://timebank.private.fish/view/alices-ledger'
+  const DAVID = 'https://ledger.timebank.private.fish/view/davids-ledger'
+  const PAGE = 'https://ledger.timebank.private.fish/view/event-help-from-alice-23-september'
+  // A thank-you: David (receiver) wrote this on his own site, naming Alice as giver.
+  const thanksText = [
+    `GIVER: [${ALICE} Alice's Ledger]`,
+    `RECEIVER: [${DAVID} David's Ledger]`,
+    'HOURS: 6 hours',
+    'DATE: 23 September 2026',
+    'WHAT: Event help',
+    'SOURCE: chat message'
+  ].join('\n')
+  const thanksPage = { title: 'Event help from Alice, 23 September', story: [{ type: 'markdown', id: 'm1', text: 'This page is a [[Time Transaction]].' }, { type: 'transaction', id: 'tx1', text: thanksText }] }
+  const facts = pageTransactions(thanksPage, 'ledger.timebank.private.fish')
+  const alice = { site: 'timebank.private.fish', slug: 'alices-ledger' }
+  const aliceText = [
+    'START: 1 September 2026',
+    'END: 30 September 2026',
+    'WATCH: ledger.timebank.private.fish',
+    `Gardening from [${DAVID} David's Ledger]: 2 hours`,
+    'Two swaps with David across sites.'
+  ].join('\n')
+
+  describe('the WATCH command', () => {
+    test('WATCH lists sites, from bare hosts, urls and commas, deduplicated', () => {
+      assert.deepEqual(parseWatch('a.site, https://B.site/view/x c.site:4242 //d.site'), ['a.site', 'b.site', 'c.site:4242', 'd.site'])
+      const c = extractCommands('WATCH: a.site\nWATCH: a.site b.site')
+      assert.deepEqual(c.watch, ['a.site', 'b.site'])
+      assert.deepEqual(parseWatch('not a site!'), ['not', 'a'])
+    })
+    test('a WATCH line is a command: it never leaks into the caption or the entries', () => {
+      assert.ok(isCommand('WATCH: ledger.timebank.private.fish'))
+      assert.equal(extractCaption(aliceText), 'Two swaps with David across sites.')
+      assert.equal(parseEntries(aliceText).length, 1)
+    })
+  })
+
+  describe('watched sites', () => {
+    test('WATCH lines first, then counterparty sites, never the own site', () => {
+      const text = `WATCH: other.site, timebank.private.fish\nSoup for [https://third.site/view/bobs-ledger Bob's Ledger]: 1 hour\n${aliceText}`
+      assert.deepEqual(watchedSites(text, 'timebank.private.fish'), ['other.site', 'ledger.timebank.private.fish', 'third.site'])
+    })
+    test('a ledger naming no one and watching nothing watches no site', () => {
+      assert.deepEqual(watchedSites('Admin: 1 hour', 'timebank.private.fish'), [])
+    })
+  })
+
+  describe('awaiting reconcile', () => {
+    test('the giver\'s ledger finds the thank-you written on the receiver\'s site', () => {
+      const awaiting = awaitingEntries(facts, alice, parseEntries(aliceText), [])
+      assert.equal(awaiting.length, 1)
+      assert.equal(awaiting[0].awaiting, true)
+      assert.equal(awaiting[0].direction, 'gave')
+      assert.equal(awaiting[0].raw, `[${PAGE} Event help from Alice, 23 September] for [${DAVID} David's Ledger]: 6 hours`)
+      assert.equal(awaitingMinutes(awaiting), 360)
+      assert.equal(awaitingText(awaiting), '6h awaiting reconcile')
+    })
+    test('a line already written for the page is not awaiting', () => {
+      const text = `${aliceText}\n[${PAGE} Event help from Alice, 23 September] for [${DAVID} David's Ledger]: 6 hours`
+      assert.equal(awaitingEntries(facts, alice, parseEntries(text), []).length, 0)
+    })
+    test('an entry already pulled from the lineup is not counted twice', () => {
+      const { pulled } = pullEntries(facts, alice, [])
+      assert.equal(awaitingEntries(facts, alice, [], pulled).length, 0)
+    })
+    test('pages on the ledger\'s own site are LINEUP\'s business, not awaiting', () => {
+      const own = pageTransactions(thanksPage, 'timebank.private.fish')
+      assert.equal(awaitingEntries(own, alice, [], []).length, 0)
+    })
+    test('a page naming someone else is ignored', () => {
+      assert.equal(awaitingEntries(facts, { site: 'timebank.private.fish', slug: 'bobs-ledger' }, [], []).length, 0)
+    })
+    test('the awaiting entry is not part of the verification count', async () => {
+      const davidLedger = { title: "David's Ledger", story: [{ type: 'timebank', text: `Gardening for [${ALICE} Alice's Ledger]: 2 hours` }] }
+      const r = await verifyItem({ text: aliceText }, { title: "Alice's Ledger", slug: 'alices-ledger', site: 'timebank.private.fish', fetchPage: async () => davidLedger })
+      assert.equal(r.linked, 1)
+      assert.equal(r.status, 'ok')
+    })
+  })
+
+  describe('Reconcile, the pure part', () => {
+    const awaiting = awaitingEntries(facts, alice, parseEntries(aliceText), [])
+    test('forks the page to the ledger\'s site and freezes its line after the last entry', () => {
+      const plan = reconcilePlan(aliceText, awaiting, ['alices-ledger'])
+      assert.deepEqual(plan.forks, [{ site: 'ledger.timebank.private.fish', slug: 'event-help-from-alice-23-september', title: 'Event help from Alice, 23 September' }])
+      assert.deepEqual(plan.kept, [])
+      const lines = plan.text.split('\n')
+      assert.equal(lines[4], awaiting[0].raw)
+      assert.equal(lines[5], 'Two swaps with David across sites.')
+      assert.equal(awaitingEntries(facts, alice, parseEntries(plan.text), []).length, 0, 'nothing awaits after reconcile')
+    })
+    test('never forks over a page the ledger\'s site already holds by that slug', () => {
+      const plan = reconcilePlan(aliceText, awaiting, ['event-help-from-alice-23-september'])
+      assert.deepEqual(plan.forks, [])
+      assert.equal(plan.kept.length, 1)
+      assert.ok(plan.text.includes(awaiting[0].raw))
+    })
+    test('the frozen line matches the receiver\'s line by page, so the pair verifies green', async () => {
+      const { text } = reconcilePlan(aliceText, awaiting, [])
+      const davidLedger = { title: "David's Ledger", story: [{ type: 'timebank', text: [
+        `Gardening for [${ALICE} Alice's Ledger]: 2 hours`,
+        `[[Event help from Alice, 23 September]] from [${ALICE} Alice's Ledger]: 6 hours`
+      ].join('\n') }] }
+      const r = await verifyItem({ text }, { title: "Alice's Ledger", slug: 'alices-ledger', site: 'timebank.private.fish', fetchPage: async () => davidLedger })
+      assert.equal(r.status, 'ok')
+      assert.equal(r.matched.length, 2)
+      assert.equal(r.counterparties[0].matched.find(e => e.txn).matchedBy, 'page')
+    })
+  })
+
+  describe('the report', () => {
+    const awaiting = awaitingEntries(facts, alice, parseEntries(aliceText), [])
+    const result = { title: "Alice's Ledger", site: 'timebank.private.fish', slug: 'alices-ledger', status: 'ok', linked: 1, matched: ['k'], unmatched: [], unreachable: [], counterparties: [], pulled: 0, notify: null }
+    test('Awaiting reconcile lists the page and offers Reconcile, owner login stated', () => {
+      const html = renderAwaiting(result, awaiting, ['ledger.timebank.private.fish'])
+      assert.ok(html.includes('Awaiting reconcile'))
+      assert.ok(html.includes(`href="${PAGE}"`))
+      assert.ok(html.includes('data-timebank-action="reconcile"'))
+      assert.ok(html.includes('6h awaiting reconcile'))
+      assert.ok(html.includes('logged in as the owner of timebank.private.fish'))
+    })
+    test('with nothing awaiting it says what is watched, and how to watch when nothing is', () => {
+      assert.ok(renderAwaiting(result, [], ['ledger.timebank.private.fish']).includes('Watched: ledger.timebank.private.fish'))
+      assert.ok(renderAwaiting(result, [], []).includes('WATCH: ledger.timebank.private.fish'))
+    })
+    test('renderReport carries the awaiting headline and section only when asked', () => {
+      const html = renderReport({ result, awaiting, watched: ['ledger.timebank.private.fish'] })
+      assert.ok(html.includes('1 transaction page on watched sites names this ledger'))
+      assert.ok(!renderReport({ result }).includes('Awaiting reconcile'))
+    })
+  })
 })

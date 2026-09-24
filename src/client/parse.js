@@ -4,6 +4,8 @@
 //   START: 1 September 2026               — start of period (optional)
 //   END: 7 September 2026                 — end of period (optional)
 //   NOTIFY: ntfy.sh/timebank-david        — ntfy topic for verification messages (optional)
+//   WATCH: ledger.timebank.private.fish   — sites this ledger watches for incoming Time
+//                                           Transaction pages that name it (awaiting reconcile)
 //   Gardening for [[Alice Ledger]]: 2 hours — linked entry, hours I GAVE   (for | to)
 //   Repairs from [[Alice Ledger]]: 1 hour   — linked entry, hours I RECEIVED (from | by)
 //   Soup for [https://alice.wiki/view/alices-ledger Alice's Ledger]: 1 hour
@@ -84,7 +86,7 @@ export const normLabel = label => String(label || '')
 
 // --- Line classification ---
 
-export const COMMANDS = /^(?:(?:START|END|NOTIFY)\s*:|(?:LINEUP|TOOL)\s*$)/i
+export const COMMANDS = /^(?:(?:START|END|NOTIFY|WATCH)\s*:|(?:LINEUP|TOOL)\s*$)/i
 const TIME_SUFFIX = /:\s*([\d.]+)\s*(hours?|hrs?|h|minutes?|mins?|m)\s*$/i
 // A counterparty is a [[wikilink]] (a ledger on this page's own site) or an
 // external link [http://site/view/slug Name] (a ledger on any site).
@@ -170,18 +172,33 @@ export const normaliseNotify = ref => {
   return `https://${s}`
 }
 
-// -> { notify: url|null, lineup: bool, tool: bool }
+// WATCH: a.site, https://b.site/view/x c.site:4242 -> ['a.site', 'b.site', 'c.site:4242']
+export const parseWatch = value => String(value || '')
+  .split(/[\s,]+/)
+  .map(token => {
+    const t = token.trim()
+    if (!t) return null
+    const m = t.match(/^(?:https?:)?\/\/([^/\s?#]+)/i)
+    const host = normSite(m ? m[1] : t.split('/')[0])
+    return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d+)?$/.test(host) ? host : null
+  })
+  .filter(Boolean)
+
+// -> { notify: url|null, lineup: bool, tool: bool, watch: [site] }
 export const extractCommands = text => {
   let notify = null
   let lineup = false
   let tool = false
+  const watch = []
   lines(text).forEach(line => {
     const m = line.match(/^NOTIFY\s*:\s*(.+)$/i)
     if (m) notify = normaliseNotify(m[1])
+    const w = line.match(/^WATCH\s*:\s*(.*)$/i)
+    if (w) parseWatch(w[1]).forEach(site => { if (!watch.some(s => sameSite(s, site))) watch.push(site) })
     if (/^LINEUP$/i.test(line)) lineup = true
     if (/^TOOL$/i.test(line)) tool = true
   })
-  return { notify, lineup, tool }
+  return { notify, lineup, tool, watch }
 }
 
 // A ledger named by a link token: [[Name]] is a ledger on `site` (the site the

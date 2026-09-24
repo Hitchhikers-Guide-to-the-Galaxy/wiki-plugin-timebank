@@ -39,7 +39,7 @@
     {
       "type": "table",
       "id": "c1cecc47bb6f159a",
-      "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic the tool page's Send verification message button posts to; https unless you write http:// |\n| LINEUP | LINEUP | Pull entries from Time Transaction pages to the left in the lineup and on this site that name this ledger, marked as pulled (thaw) |\n| TOOL | TOOL | Makes the item the Ledger Verification Tool's report: it checks the ledger on the page to its left |"
+      "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic the tool page's Send verification message button posts to; https unless you write http:// |\n| LINEUP | LINEUP | Pull entries from Time Transaction pages to the left in the lineup and on this site that name this ledger, marked as pulled (thaw) |\n| WATCH: | WATCH: ledger.timebank.private.fish | Sites this ledger watches for incoming Time Transaction pages that name it \u2014 a thank-you written on the receiver's site; their hours show as awaiting reconcile |\n| TOOL | TOOL | Makes the item the Ledger Verification Tool's report: it checks the ledger on the page to its left |"
     },
     {
       "type": "markdown",
@@ -123,6 +123,21 @@
     },
     {
       "type": "markdown",
+      "id": "905c6397dc4b7e89",
+      "text": "# Thank You Invoice\n> The receiver records; the giver reconciles."
+    },
+    {
+      "type": "markdown",
+      "id": "1f13fbb1a2d6ade7",
+      "text": "A thank-you is written by the **receiver**: a Time Transaction page on the receiver's own site and the line in their ledger \u2014 Marvin, the Pi5's Telegram bot, does it from a `/thanks` message or a voice note after reading it back in the chat ([https://time.peoplepowered.money/view/thank-you-invoice Thank You Invoice]). Nothing is pushed to the giver. The giver's ledger **watches** the sites on its `WATCH:` lines and the sites of the ledgers it already names; every transaction page there that names it and that it does not carry yet is **awaiting reconcile** \u2014 the badge reads *Verified \u00b7 6h awaiting reconcile*, and the rows show under the ledger without counting in its total."
+    },
+    {
+      "type": "markdown",
+      "id": "2efaff09394e82fb",
+      "text": "On the [[Ledger Verification Tool]], **Awaiting reconcile** lists those pages and offers **Reconcile**: it opens each one beside the tool, forks it to the ledger's site with the wiki's own fork, writes the lines into the ledger \u2014 keeping the link to the page where it was written, so the pair matches by page \u2014 and checks again. It needs the browser logged in as the site owner, and says so when it is not. An Energy Invoice is the same page from the giver's side, awaiting reconcile on the receiver's ledger."
+    },
+    {
+      "type": "markdown",
       "id": "b7d3f19e42a80c11",
       "text": "# Repositories\n\nSource on GitHub: https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank\n\nPackage on npm: https://www.npmjs.com/package/wiki-plugin-timebank"
     },
@@ -134,7 +149,7 @@
     {
       "type": "markdown",
       "id": "a1b2c3d4e5001002",
-      "text": "**Version:** 0.4.0\n\n**Built:** Wed, 23 Sep 2026 14:34:26 GMT\n\n**Change:** Time Transaction pages. An entry label may link its transaction page, and a shared page is the strongest match; `LINEUP` pulls entries from transaction items in the lineup and on the ledger's own site; the `transaction` item type (served by the tiny wiki-plugin-transaction package, code in this bundle); the Ledger Verification Tool becomes a plugin page (`pages/ledger-verification-tool`, listed in factory.json) whose `TOOL` item reports on the ledger to its left, Result first and coloured, with sign-off per transaction, Freeze, Send, Find and Fix. New `src/client/txn.js`, `links.js`, `transaction.js`. 0.3.0 added cross-site ledgers and the tool; 0.2.0 linked ledgers, `NOTIFY:` and the badge.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/` (transaction package in `transaction/`)\n\n**Installed:** `~/.nvm/versions/node/v24.18.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` and `wiki-plugin-transaction` (laptop, dev symlinks) \u00b7 `/usr/lib/node_modules/wiki/node_modules/` (Pi5)"
+      "text": "**Version:** 0.5.0\n\n**Built:** Thu, 24 Sep 2026 21:03:23 GMT\n\n**Change:** Thank You Invoice. `WATCH:` names sites a ledger watches; transaction pages there (and on the sites of the ledgers it names) that name it and that it does not carry show as *awaiting reconcile* on the badge, under the ledger and on the tool page, whose **Reconcile** opens them, forks them to the ledger's site with the wiki's own fork, freezes their lines in and checks again. The transaction item registers its parties' sites as neighbours. 0.4.0 added Time Transaction pages, LINEUP, Freeze and the tool page; 0.3.0 cross-site ledgers; 0.2.0 linked ledgers and the badge.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/` (transaction package in `transaction/`)\n\n**Installed:** `~/.nvm/versions/node/v24.18.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` and `wiki-plugin-transaction` (laptop, dev symlinks) \u00b7 `/usr/lib/node_modules/wiki/node_modules/` (Pi5)"
     }
   ],
   "journal": [
@@ -594,6 +609,64 @@
       },
       "date": 1790174173702,
       "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "edit",
+      "id": "c1cecc47bb6f159a",
+      "item": {
+        "type": "table",
+        "id": "c1cecc47bb6f159a",
+        "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic the tool page's Send verification message button posts to; https unless you write http:// |\n| LINEUP | LINEUP | Pull entries from Time Transaction pages to the left in the lineup and on this site that name this ledger, marked as pulled (thaw) |\n| WATCH: | WATCH: ledger.timebank.private.fish | Sites this ledger watches for incoming Time Transaction pages that name it \u2014 a thank-you written on the receiver's site; their hours show as awaiting reconcile |\n| TOOL | TOOL | Makes the item the Ledger Verification Tool's report: it checks the ledger on the page to its left |"
+      },
+      "date": 1790287037296,
+      "provenance": "Claude Code (claude-opus-5-5): 0.5.0 \u2014 WATCH, awaiting reconcile, Reconcile (Timebank Verification Plan Phase 8)"
+    },
+    {
+      "type": "add",
+      "id": "905c6397dc4b7e89",
+      "item": {
+        "type": "markdown",
+        "id": "905c6397dc4b7e89",
+        "text": "# Thank You Invoice\n> The receiver records; the giver reconciles."
+      },
+      "after": "0bc65afe61c982da",
+      "date": 1790287037296,
+      "provenance": "Claude Code (claude-opus-5-5): 0.5.0 \u2014 WATCH, awaiting reconcile, Reconcile (Timebank Verification Plan Phase 8)"
+    },
+    {
+      "type": "add",
+      "id": "1f13fbb1a2d6ade7",
+      "item": {
+        "type": "markdown",
+        "id": "1f13fbb1a2d6ade7",
+        "text": "A thank-you is written by the **receiver**: a Time Transaction page on the receiver's own site and the line in their ledger \u2014 Marvin, the Pi5's Telegram bot, does it from a `/thanks` message or a voice note after reading it back in the chat ([https://time.peoplepowered.money/view/thank-you-invoice Thank You Invoice]). Nothing is pushed to the giver. The giver's ledger **watches** the sites on its `WATCH:` lines and the sites of the ledgers it already names; every transaction page there that names it and that it does not carry yet is **awaiting reconcile** \u2014 the badge reads *Verified \u00b7 6h awaiting reconcile*, and the rows show under the ledger without counting in its total."
+      },
+      "after": "905c6397dc4b7e89",
+      "date": 1790287037296,
+      "provenance": "Claude Code (claude-opus-5-5): 0.5.0 \u2014 WATCH, awaiting reconcile, Reconcile (Timebank Verification Plan Phase 8)"
+    },
+    {
+      "type": "add",
+      "id": "2efaff09394e82fb",
+      "item": {
+        "type": "markdown",
+        "id": "2efaff09394e82fb",
+        "text": "On the [[Ledger Verification Tool]], **Awaiting reconcile** lists those pages and offers **Reconcile**: it opens each one beside the tool, forks it to the ledger's site with the wiki's own fork, writes the lines into the ledger \u2014 keeping the link to the page where it was written, so the pair matches by page \u2014 and checks again. It needs the browser logged in as the site owner, and says so when it is not. An Energy Invoice is the same page from the giver's side, awaiting reconcile on the receiver's ledger."
+      },
+      "after": "1f13fbb1a2d6ade7",
+      "date": 1790287037296,
+      "provenance": "Claude Code (claude-opus-5-5): 0.5.0 \u2014 WATCH, awaiting reconcile, Reconcile (Timebank Verification Plan Phase 8)"
+    },
+    {
+      "type": "edit",
+      "id": "a1b2c3d4e5001002",
+      "item": {
+        "type": "markdown",
+        "id": "a1b2c3d4e5001002",
+        "text": "**Version:** 0.5.0\n\n**Built:** Thu, 24 Sep 2026 21:03:23 GMT\n\n**Change:** Thank You Invoice. `WATCH:` names sites a ledger watches; transaction pages there (and on the sites of the ledgers it names) that name it and that it does not carry show as *awaiting reconcile* on the badge, under the ledger and on the tool page, whose **Reconcile** opens them, forks them to the ledger's site with the wiki's own fork, freezes their lines in and checks again. The transaction item registers its parties' sites as neighbours. 0.4.0 added Time Transaction pages, LINEUP, Freeze and the tool page; 0.3.0 cross-site ledgers; 0.2.0 linked ledgers and the badge.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/` (transaction package in `transaction/`)\n\n**Installed:** `~/.nvm/versions/node/v24.18.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` and `wiki-plugin-transaction` (laptop, dev symlinks) \u00b7 `/usr/lib/node_modules/wiki/node_modules/` (Pi5)"
+      },
+      "date": 1790287037296,
+      "provenance": "Claude Code (claude-opus-5-5): 0.5.0 \u2014 WATCH, awaiting reconcile, Reconcile (Timebank Verification Plan Phase 8)"
     }
   ],
   "plugin": "timebank"

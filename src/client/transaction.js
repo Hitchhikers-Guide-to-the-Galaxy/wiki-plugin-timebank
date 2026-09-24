@@ -55,10 +55,22 @@ const ledgerMarkup = (ref, site) => {
   return markup(`[[${ref.name}]]`)
 }
 
+// The giver's and receiver's sites become neighbours, so a Twin WATCH item on
+// the page can see which of them has forked it — the receipt of a Wiki Message.
+const registerParties = (facts, site) => {
+  const hood = typeof wiki !== 'undefined' && wiki.neighborhoodObject
+  if (!hood || typeof hood.registerNeighbor !== 'function') return
+  for (const ref of [facts.giver, facts.receiver]) {
+    if (!ref || !ref.external || !ref.site || sameSite(ref.site, site) || sameSite(ref.site, location.host)) continue
+    try { hood.registerNeighbor(ref.site) } catch { /* not shown, not fatal */ }
+  }
+}
+
 const emit = ($item, item) => {
   ensureStyle()
   const info = pageInfo($item)
   const facts = parseTransaction(item.text || '', { ...info, itemId: item.id })
+  registerParties(facts, info.site)
   const hours = facts.time ? formatHours(facts.time) : '?'
   const date = facts.date ? formatShortDate(facts.date) : 'no date'
   const source = facts.source ? ` · from ${escape(facts.source)}` : ''

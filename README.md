@@ -41,6 +41,7 @@ Meeting with [[David]]: 2 hours
 - `[https://site/view/slug Name]` names a ledger on **another site** by external link — the only cross-site form (0.3.0). `http://`, `//site/slug`, ports, a trailing slash and a `.html` or `.json` suffix are all accepted. Write `/view/slug`: a wiki server answers `/view/slug` and `/slug.html`, not a bare `/slug`
 - A link without a direction word is an ordinary entry
 - `NOTIFY: topic` — ntfy topic (https unless `http://` is written)
+- `WATCH: site [site …]` — sites this ledger watches for incoming Time Transaction pages that name it (0.5.0)
 - `LEDGER:` is gone (0.3.0): name the ledger by external link instead
 
 A ledger's identity is its **site plus its slug**. An entry is matched when the counterparty ledger has a timebank entry that points back at this exact ledger — a wikilink on their page names their own site, so it only points back when both ledgers share a site — runs the opposite way, has the same minutes and the same label (case, spacing and trailing punctuation ignored), in an overlapping START/END period when both declare one. Two pages titled "David's Ledger" on two sites never match each other. On a `*.localhost` dev farm a portless name and its `:port` name count as one site.
@@ -68,6 +69,18 @@ Planed the shed door and re-hung the gate.
 - Sign-off per transaction page: **accepted** (the receiver's ledger holds the line), **in dialogue** (the receiver forked the page), **awaiting sign-off**
 
 The `transaction` item type is served by a tiny second package, **wiki-plugin-transaction** (`transaction/` in this repo): wiki-server serves one item type per package, so its client file imports `/plugins/timebank/timebank.js` and registers `window.plugins.transaction` from this bundle. Install both.
+
+## Thank You Invoice: watched sites, awaiting, Reconcile (0.5.0)
+
+A thank-you is recorded by the **receiver**: a Time Transaction page on the receiver's own site (Marvin, the Pi5's Telegram bot, writes it from a `/thanks` message or voice note, after reading it back in the chat) plus the line in the receiver's ledger. Nothing is pushed to the giver's site. The giver's ledger **watches**:
+
+- the sites on its `WATCH:` lines, and the sites of the counterparty ledgers it already names by external link — never its own site
+- every transaction page there that names this ledger and that the ledger does not carry yet (no written line linking the same page, not already pulled by `LINEUP`) is **awaiting reconcile**: the badge reads `Verified · 6h awaiting reconcile`, the rows show under the ledger (not counted in its total), and the tooltip lists them
+- the tool page's **Awaiting reconcile** section lists the pages and offers **Reconcile**: it opens each page beside the tool, forks it to the ledger's site with the wiki's own fork (`pageHandler.put(…, {type: 'fork'})`, as the fork flag does), writes the lines into the ledger (keeping the external link to the page where it was written, so the pair matches **by page**) and checks again. It never forks over a page the site already holds by that slug, stops at the first fork the server does not confirm, and refuses — saying why — when the browser is not logged in as the owner
+
+An **Energy Invoice** is the same page from the giver's side: it is written on the giver's site and awaits reconcile on the receiver's ledger.
+
+The `transaction` item registers the giver's and receiver's sites as neighbours, so a Twin `WATCH` item on the page shows who has forked it — the receipt of the [Wiki Message](http://plan.ide.earth/view/wiki-message).
 
 ## Ledger Verification Tool (0.4.0: a plugin page)
 

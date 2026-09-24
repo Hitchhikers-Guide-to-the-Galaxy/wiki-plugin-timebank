@@ -15,8 +15,14 @@
 // A ledger with a LINEUP line gathers these facts (from pages beside it in the
 // lineup and from its own site) and shows them as pulled entries; Freeze
 // writes the pulled entries into the ledger's own text.
+//
+// Every ledger also watches other sites — its WATCH lines and the sites of the
+// counterparty ledgers it names — for transaction pages that name it and that
+// it does not yet carry: a Thank You Invoice written on the receiver's site, or
+// an Energy Invoice on the giver's. Those are awaiting reconcile; Reconcile
+// forks them to the ledger's site and freezes their lines in.
 
-import { asSlug, normSite, sameSite, parseDate, ledgerRefOf, ledgerUrl, parseEntries, isCommand } from './parse.js'
+import { asSlug, normSite, sameSite, parseDate, ledgerRefOf, ledgerUrl, parseEntries, isCommand, extractCommands } from './parse.js'
 
 export const TEMPLATE_TITLE = 'Time Transaction Template'
 export const TRANSACTION_TOPIC = 'time-transaction'
@@ -231,3 +237,60 @@ export const transactionCandidates = (sitemap, limit = 40) => (Array.isArray(sit
   .filter(p => p && p.slug && p.slug !== asSlug(TEMPLATE_TITLE) && p.slug !== TRANSACTION_TOPIC &&
     p.links && Object.prototype.hasOwnProperty.call(p.links, TRANSACTION_TOPIC))
   .slice(0, limit)
+
+// --- Watched sites and Reconcile ---
+
+// The sites a ledger watches for incoming transaction pages: its WATCH lines,
+// then the sites of the counterparty ledgers it already names by external
+// link — never its own site. The Wiki Message rule: a ledger only receives
+// from a site it chose to watch, or from someone it already trades with.
+export const watchedSites = (text, ownSite) => {
+  const out = []
+  const add = site => {
+    if (!site || sameSite(site, ownSite) || out.some(s => sameSite(s, site))) return
+    out.push(normSite(site))
+  }
+  extractCommands(text).watch.forEach(add)
+  for (const e of parseEntries(text)) {
+    if (e.linked && e.counterparty.external) add(e.counterparty.site)
+  }
+  return out
+}
+
+// Entries that transaction pages on watched sites imply for ledger `me` and
+// that the ledger does not yet carry: not written (by page slug), not already
+// pulled from the lineup or its own site, and not on its own site at all.
+//   facts: gathered from the watched sites · written: the ledger's parsed
+//   entries · pulled: entries already pulled by LINEUP
+// -> [entry with awaiting: true, facts]
+export const awaitingEntries = (facts, me, written = [], pulled = []) => {
+  const { pulled: implied } = pullEntries(facts, me, written)
+  return implied
+    .filter(e => !sameSite(e.facts.page.site, me.site))
+    .filter(e => !pulled.some(p => p.txn && p.txn.slug === e.txn.slug))
+    .map(e => ({ ...e, awaiting: true }))
+}
+
+// Total minutes awaiting, for the badge.
+export const awaitingMinutes = awaiting => (awaiting || []).reduce((sum, e) => sum + (e.facts ? e.facts.minutes : Math.round(e.time * 60)), 0)
+
+// One-click Reconcile, the pure part: which pages to fork to the ledger's own
+// site, and the ledger text with their lines frozen in. Each line keeps its
+// external link to the page where it was written, so the pair matches by page;
+// the fork is the ledger's own copy and the receipt the writer can see.
+// A page whose slug the ledger's site already holds is never forked over it:
+// it is kept (the site already has its copy, or a different page by that name)
+// and only its line is frozen.  ownSlugs: slugs in the ledger site's sitemap.
+// -> { forks: [{ site, slug, title }], kept: [{ site, slug, title }], text }
+export const reconcilePlan = (text, awaiting = [], ownSlugs = []) => {
+  const forks = []
+  const kept = []
+  for (const e of awaiting) {
+    const p = e.facts && e.facts.page
+    if (!p || !p.slug || [...forks, ...kept].some(f => f.slug === p.slug)) continue
+    const page = { site: normSite(p.site), slug: p.slug, title: p.title || p.slug }
+    if (ownSlugs.includes(p.slug)) kept.push(page)
+    else forks.push(page)
+  }
+  return { forks, kept, text: freezeText(text, awaiting, []) }
+}
