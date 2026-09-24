@@ -22,6 +22,66 @@ A short description of this period's work.
 - Lines ending in a time amount (`2 hours`, `30 mins`, `1.5h`, `90m`) are summed into a **Total** row
 - Lines without a time are shown as notes
 - Prose sentences (containing punctuation) appear as an italic caption below the table
+- Entry rows and the caption go through the wiki's link resolver, so `[[Links]]` work and HTML is escaped
+
+## Linked ledgers and the Verified badge
+
+```
+START: 1 September 2026
+END: 7 September 2026
+NOTIFY: ntfy.sh/timebank-david
+Gardening for [[Alice Ledger]]: 2 hours
+Repairs from [[Alice Ledger]]: 1 hour
+Soup for [https://alice.wiki/view/alices-ledger Alice's Ledger]: 1 hour
+Meeting with [[David]]: 2 hours
+```
+
+- `for` / `to` — hours I **gave**; `from` / `by` — hours I **received**
+- `[[Page]]` names a ledger on **this page's own site**
+- `[https://site/view/slug Name]` names a ledger on **another site** by external link — the only cross-site form (0.3.0). `http://`, `//site/slug`, ports, a trailing slash and a `.html` or `.json` suffix are all accepted. Write `/view/slug`: a wiki server answers `/view/slug` and `/slug.html`, not a bare `/slug`
+- A link without a direction word is an ordinary entry
+- `NOTIFY: topic` — ntfy topic (https unless `http://` is written)
+- `LEDGER:` is gone (0.3.0): name the ledger by external link instead
+
+A ledger's identity is its **site plus its slug**. An entry is matched when the counterparty ledger has a timebank entry that points back at this exact ledger — a wikilink on their page names their own site, so it only points back when both ledgers share a site — runs the opposite way, has the same minutes and the same label (case, spacing and trailing punctuation ignored), in an overlapping START/END period when both declare one. Two pages titled "David's Ledger" on two sites never match each other. On a `*.localhost` dev farm a portless name and its `:port` name count as one site.
+
+The badge beside the column header is **Verified** (green, all matched), **Partly verified** (orange) or **Not verified** (red, none matched or a counterparty unreachable); hover for details. Each external counterparty's site is registered as a neighbour, so its flag shows and its pages resolve.
+
+## Time Transaction pages and LINEUP (0.4.0)
+
+A ledger line is a summary; a **Time Transaction** page records the work, with a `transaction` item holding the facts:
+
+```
+GIVER: [https://alice.wiki/view/alices-ledger Alice's Ledger]
+RECEIVER: [https://david.wiki/view/davids-ledger David's Ledger]
+HOURS: 1 hour
+DATE: 3 September 2026
+WHAT: Repairs
+SOURCE: audio note
+Planed the shed door and re-hung the gate.
+```
+
+- An entry's label may link its transaction page: `[[Repairs for David, 3 September]] for [https://david.wiki/view/davids-ledger David's Ledger]: 1 hour`, or `[https://alice.wiki/view/repairs-for-david-3-september Repairs for David, 3 September] from [...]` from another site
+- When both ledgers link the same page (site plus slug) they match **by page**, before label and hours are compared; label-and-hours stays the fallback. A matched pair with no page is valid
+- `LINEUP` makes the ledger a view: it pulls the entries implied by transaction items on pages to its left in the lineup and on its own site (pages linking `[[Time Transaction]]`), marked *pulled*. A page already linked by a written line (or a fork of it) is not shown twice
+- **Freeze** writes pulled entries into the ledger's text (tool page button, or the editor, which opens on the frozen text while entries are pulled); `LINEUP` stays
+- Sign-off per transaction page: **accepted** (the receiver's ledger holds the line), **in dialogue** (the receiver forked the page), **awaiting sign-off**
+
+The `transaction` item type is served by a tiny second package, **wiki-plugin-transaction** (`transaction/` in this repo): wiki-server serves one item type per package, so its client file imports `/plugins/timebank/timebank.js` and registers `window.plugins.transaction` from this bundle. Install both.
+
+## Ledger Verification Tool (0.4.0: a plugin page)
+
+A single click on the badge opens the **Ledger Verification Tool** beside the ledger. It is a plugin page (`pages/ledger-verification-tool`, listed in `factory.json` `pages`), served on every site of the farm, green. Its timebank item holds `TOOL`: on emit it finds the ledger on the page to its left, checks it and draws the report:
+
+- which ledger, which site, when it was checked and from which site, and the badge status
+- **Entries** — Result first, coloured like the badge (matched green, *by page* when both link one transaction page; unmatched or ledger unreachable red), then direction, hours, label, counterparty ledger and transaction page
+- **Transactions** — each transaction page and its sign-off
+- **Freeze** — on a `LINEUP` ledger, writes the pulled entries in
+- **Send verification message** — one message per counterparty to the `NOTIFY:` topic
+- **Find missing ledgers** — candidates for each unreachable or unmatched counterparty with a **Fix** button, and entries with no transaction page offered as new pages (the wiki then offers *create from Time Transaction Template*)
+- Freeze and Fix save through the wiki's page handler and confirm with the server; they refuse, and say why, when the browser is not logged in as the owner or the ledger is a remote copy
+
+The last check is kept on the item as `item.verified = { at, by, site, status, matched, unmatched, unreachable }`. Double-click still opens the editor.
 
 ## Supported Time Formats
 
@@ -34,20 +94,21 @@ npm install
 npm run build
 ```
 
-The build step runs tests then compiles `src/client/timebank.js` → `client/timebank.js` via esbuild.
+The build step runs tests then bundles `src/client/timebank.js` (with `parse.js`, `verify.js`, `tool.js`, `txn.js`, `links.js` and `transaction.js`) → `client/timebank.js` via esbuild. `transaction/` is the wiki-plugin-transaction package; pack it with `npm pack ./transaction`.
 
 ## Install into Federated Wiki
 
 ```bash
 cd ~/.nvm/versions/node/$(node -v | tr -d v)/lib/node_modules/wiki
 npm install wiki-plugin-timebank
+npm install ./path/to/wiki-plugin-transaction-0.4.0.tgz
 ```
 
 Then restart your wiki server.
 
 ## Development
 
-Source lives in `src/client/timebank.js`. After editing, run `npm run build` to recompile. The `npm run about` script starts a local wiki server on port 3010 pointing at the plugin directory, which is useful for previewing the about page.
+Source lives in `src/client/`: `parse.js` (grammar and ledger addresses), `verify.js` (matching, sign-off and messages, pure), `txn.js` (transaction facts, pulled entries, freeze, pure), `tool.js` (the tool report and candidate finder, pure), `links.js` (anchors identical to wiki.resolveLinks, for markup drawn after emit), `transaction.js` (the transaction item) and `timebank.js` (browser layer). After editing, run `npm run build` to recompile. The `npm run about` script starts a local wiki server on port 3010 pointing at the plugin directory, which is useful for previewing the about page.
 
 ## License
 

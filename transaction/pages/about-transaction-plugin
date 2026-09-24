@@ -1,0 +1,88 @@
+{
+  "title": "About Transaction Plugin",
+  "story": [
+    {
+      "type": "markdown",
+      "id": "bc4430b0d4132ebd",
+      "text": "The Transaction plugin draws the `transaction` item of a **Time Transaction** page: the record of one piece of timebank work, as data a ledger can read. Each line is one fact; any other line is a note."
+    },
+    {
+      "type": "transaction",
+      "id": "0cc458b90e87661e",
+      "text": "GIVER: [https://alice.wiki/view/alices-ledger Alice's Ledger]\nRECEIVER: [https://david.wiki/view/davids-ledger David's Ledger]\nHOURS: 1 hour\nDATE: 3 September 2026\nWHAT: Repairs\nSOURCE: hand\nPlaned the shed door and re-hung the gate."
+    },
+    {
+      "type": "table",
+      "id": "62c7c41e8690ad03",
+      "text": "CAPTION The lines of a transaction item\n\n| Line | Example | Meaning |\n|---|---|---|\n| GIVER: | [https://alice.wiki/view/alices-ledger Alice's Ledger] | The ledger of whoever did the work |\n| RECEIVER: | [https://david.wiki/view/davids-ledger David's Ledger] | The ledger of whoever it was for |\n| HOURS: | 1 hour \u00b7 90 minutes \u00b7 1.5h | How long |\n| DATE: | 3 September 2026 | When |\n| WHAT: | Repairs | The ledger label; the page title when absent |\n| SOURCE: | chat message \u00b7 audio note \u00b7 hand | Where the record came from |"
+    },
+    {
+      "type": "markdown",
+      "id": "9f55be5e4d480be7",
+      "text": "Name both ledgers by external link, so the page means the same on every site it is forked to. The item adds the class `transaction-source` and a `transactionData()` function to its element, the way map and calendar items expose their data, so a timebank ledger with a `LINEUP` line to its right pulls the entry it implies. Double-click to edit."
+    },
+    {
+      "type": "markdown",
+      "id": "adc8a41fc19f4a47",
+      "text": "# One Package, Two Types\nWhy this package is tiny"
+    },
+    {
+      "type": "markdown",
+      "id": "ae1187708df3cc2a",
+      "text": "wiki-server serves one item type per plugin package, from `/plugins/<type>/<type>.js`. This package's client file only imports `/plugins/timebank/timebank.js` \u2014 the same module the wiki loads for timebank items, so it runs once \u2014 and registers its transaction plugin as `window.plugins.transaction`. All the code, and its tests, live in wiki-plugin-timebank; install both."
+    },
+    {
+      "type": "markdown",
+      "id": "c3db3804b1d25459",
+      "text": "# See\n\n- [[About TimeBank Plugin]] \u2014 ledgers, LINEUP, the badge and the Ledger Verification Tool\n- [[Time Transaction]] \u2014 what a transaction page is, where a site has one"
+    }
+  ],
+  "journal": [
+    {
+      "type": "create",
+      "item": {
+        "title": "About Transaction Plugin",
+        "story": [
+          {
+            "type": "markdown",
+            "id": "bc4430b0d4132ebd",
+            "text": "The Transaction plugin draws the `transaction` item of a **Time Transaction** page: the record of one piece of timebank work, as data a ledger can read. Each line is one fact; any other line is a note."
+          },
+          {
+            "type": "transaction",
+            "id": "0cc458b90e87661e",
+            "text": "GIVER: [https://alice.wiki/view/alices-ledger Alice's Ledger]\nRECEIVER: [https://david.wiki/view/davids-ledger David's Ledger]\nHOURS: 1 hour\nDATE: 3 September 2026\nWHAT: Repairs\nSOURCE: hand\nPlaned the shed door and re-hung the gate."
+          },
+          {
+            "type": "table",
+            "id": "62c7c41e8690ad03",
+            "text": "CAPTION The lines of a transaction item\n\n| Line | Example | Meaning |\n|---|---|---|\n| GIVER: | [https://alice.wiki/view/alices-ledger Alice's Ledger] | The ledger of whoever did the work |\n| RECEIVER: | [https://david.wiki/view/davids-ledger David's Ledger] | The ledger of whoever it was for |\n| HOURS: | 1 hour \u00b7 90 minutes \u00b7 1.5h | How long |\n| DATE: | 3 September 2026 | When |\n| WHAT: | Repairs | The ledger label; the page title when absent |\n| SOURCE: | chat message \u00b7 audio note \u00b7 hand | Where the record came from |"
+          },
+          {
+            "type": "markdown",
+            "id": "9f55be5e4d480be7",
+            "text": "Name both ledgers by external link, so the page means the same on every site it is forked to. The item adds the class `transaction-source` and a `transactionData()` function to its element, the way map and calendar items expose their data, so a timebank ledger with a `LINEUP` line to its right pulls the entry it implies. Double-click to edit."
+          },
+          {
+            "type": "markdown",
+            "id": "adc8a41fc19f4a47",
+            "text": "# One Package, Two Types\nWhy this package is tiny"
+          },
+          {
+            "type": "markdown",
+            "id": "ae1187708df3cc2a",
+            "text": "wiki-server serves one item type per plugin package, from `/plugins/<type>/<type>.js`. This package's client file only imports `/plugins/timebank/timebank.js` \u2014 the same module the wiki loads for timebank items, so it runs once \u2014 and registers its transaction plugin as `window.plugins.transaction`. All the code, and its tests, live in wiki-plugin-timebank; install both."
+          },
+          {
+            "type": "markdown",
+            "id": "c3db3804b1d25459",
+            "text": "# See\n\n- [[About TimeBank Plugin]] \u2014 ledgers, LINEUP, the badge and the Ledger Verification Tool\n- [[Time Transaction]] \u2014 what a transaction page is, where a site has one"
+          }
+        ]
+      },
+      "date": 1790174306466,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-transaction 0.4.0, Phase 7 of the Timebank Verification Plan."
+    }
+  ],
+  "plugin": "transaction"
+}

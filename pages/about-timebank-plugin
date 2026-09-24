@@ -4,7 +4,7 @@
     {
       "type": "markdown",
       "id": "21341e728c47230c",
-      "text": "The TimeBank plugin displays a list of time entries as a dated ledger. Each line in the item text is one entry. Lines ending with a time amount are summed into a running total. The column header shows the end date of the batch. See [[Table Formatting]] for details of the HTML markup used to render the table."
+      "text": "The TimeBank plugin displays a list of time entries as a dated ledger. Each line in the item text is one entry. Lines ending with a time amount are summed into a running total. The column header shows the end date of the batch. An entry can name a counterparty ledger \u2014 `Gardening for [[Alice Ledger]]: 2 hours` on the same site, or `Gardening for [https://alice.wiki/view/alices-ledger Alice's Ledger]: 2 hours` on another site \u2014 and a **Verified** badge checks that the other ledger records the same hours the other way round. Clicking the badge opens the **Ledger Verification Tool** page beside the ledger. Since 0.4.0 an entry's label can link the **Time Transaction** page that records the work, and a ledger with a `LINEUP` line pulls its entries from those pages. Labels and captions go through the wiki's link resolver, so [[wikilinks]] work everywhere in the item. See [[Table Formatting]] for the HTML markup used to render the table."
     },
     {
       "type": "timebank",
@@ -14,7 +14,7 @@
     {
       "type": "markdown",
       "id": "8952b36884fad15a",
-      "text": "## Entering Time"
+      "text": "# Entering Time"
     },
     {
       "type": "markdown",
@@ -24,7 +24,7 @@
     {
       "type": "markdown",
       "id": "570314c34d9c6085",
-      "text": "## Date Handling"
+      "text": "# Date Handling"
     },
     {
       "type": "markdown",
@@ -33,18 +33,108 @@
     },
     {
       "type": "markdown",
+      "id": "5324b88a2f3b51c2",
+      "text": "# Commands\nLines that set the ledger up rather than record time"
+    },
+    {
+      "type": "table",
+      "id": "c1cecc47bb6f159a",
+      "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic the tool page's Send verification message button posts to; https unless you write http:// |\n| LINEUP | LINEUP | Pull entries from Time Transaction pages to the left in the lineup and on this site that name this ledger, marked as pulled (thaw) |\n| TOOL | TOOL | Makes the item the Ledger Verification Tool's report: it checks the ledger on the page to its left |"
+    },
+    {
+      "type": "markdown",
+      "id": "b7ce35f238cd5ec1",
+      "text": "# Linked Ledgers\nA double entry between two pages"
+    },
+    {
+      "type": "markdown",
+      "id": "511f4abddf458ec6",
+      "text": "An entry that ends `for` or `to` a ledger records hours **I gave** to it. One that ends `from` or `by` a ledger records hours **I received**. Name a ledger on this same site with a wikilink, `for [[Alice Ledger]]`. Name a ledger on **another site** with an external link to the exact page, `for [https://alice.wiki/view/alices-ledger Alice's Ledger]` \u2014 it opens in a new tab and carries the site in its address. `http://`, `//site/slug`, ports, a trailing slash and a `.html` or `.json` suffix are accepted; write `/view/slug`, because a wiki answers that address and not a bare `/slug`. The other ledger confirms an entry with the opposite word and a link back to this page. A link without a direction word \u2014 `Meeting with [[David]]: 2 hours` \u2014 is an ordinary entry that happens to contain a link. The old `LEDGER:` command is gone since 0.3.0."
+    },
+    {
+      "type": "timebank",
+      "id": "99cdc1709ebb3b58",
+      "text": "START: 1 September 2026\nEND: 7 September 2026\nNOTIFY: ntfy.sh/timebank-demo-david\nGardening for [[Alice Ledger]]: 2 hours\nRepairs from [[Alice Ledger]]: 1 hour\nA week of swaps with [[Alice Ledger]]."
+    },
+    {
+      "type": "markdown",
+      "id": "46a90ffb474d085b",
+      "text": "A ledger is identified by its **site plus its slug**, never its title alone: two pages called David's Ledger on two sites are two ledgers and never match each other. A wikilink on the other ledger names the other ledger's own site, so it only points back here when both ledgers share a site; across sites the other ledger must name this one by external link. Two entries match when the other entry points back at this exact ledger, runs the opposite way, has the same minutes, and the same label once case, spacing and trailing punctuation are ignored. Each counter-entry confirms one entry only. When both items declare START/END the periods must overlap. On this about page Alice Ledger does not exist, so the badge above is red."
+    },
+    {
+      "type": "markdown",
+      "id": "2565e0c18332453d",
+      "text": "# Verification Badge\nGreen, orange or red beside the column header"
+    },
+    {
+      "type": "markdown",
+      "id": "c882bdda56bd72d0",
+      "text": "A ledger with linked entries shows a badge: **Verified** (green) when every linked entry is matched, **Partly verified** (orange) when some are, **Not verified** (red) when none are or a counterparty ledger cannot be reached. Hover for the detail: how many matched, which entries did not, and the address of the ledger that was checked. Each counterparty site named by external link is registered as a neighbour, so its flag shows and its pages resolve. The check runs in the browser; the last result is kept on the item as `item.verified`, with the time and the site that checked it."
+    },
+    {
+      "type": "markdown",
+      "id": "39023f1c68d65c2a",
+      "text": "# Ledger Verification Tool\nClick the badge for a page that says what was checked"
+    },
+    {
+      "type": "markdown",
+      "id": "d7a03d9baa6c3c14",
+      "text": "A single click on the badge opens the **Ledger Verification Tool** beside the ledger. It is a plugin page, shipped in this package's `pages/` and served on every site of the farm (green, like other plugin pages; also in the \u2630 menu). Its timebank item runs in `TOOL` mode: it finds the ledger on the page to its left, checks it and draws the report \u2014 which ledger, which site, when and from where it was checked, and the status. The **Entries** table puts the Result first, coloured like the badge: matched (green, *by page* when both ledgers link one transaction page), unmatched or ledger unreachable (red), with direction, hours, label, counterparty ledger and transaction page. **Transactions** gives each transaction page's sign-off: accepted, in dialogue or awaiting sign-off. **Freeze** writes pulled entries into the ledger. **Send verification message** posts one message per counterparty to the `NOTIFY:` [https://ntfy.sh ntfy] topic \u2014 title, status tags, a click link to the counterparty ledger, and a body of `Confirmed: \u2026 \u2014 matched` or `Verify: \u2026 \u2014 unmatched in <ledger address>` lines. **Find missing ledgers** lists candidates for every unreachable or unmatched counterparty, each with a **Fix** button that rewrites those entry lines to name it by external link, and lists entries with no transaction page as new pages to create from the Time Transaction Template. Freeze and Fix save through the wiki's page handler, so they need the browser to be logged in as the site owner, and say so when it is not. Double-click anywhere else on the ledger still opens the editor."
+    },
+    {
+      "type": "markdown",
+      "id": "e6446c2dc9c09da4",
+      "text": "# Time Transaction Pages\nThe work behind the line"
+    },
+    {
+      "type": "markdown",
+      "id": "d2fe3e2f9d9226de",
+      "text": "A ledger line is a summary; a **Time Transaction** page records the work \u2014 who gave, who received, how long, when, what was done \u2014 with a `transaction` item holding the same facts as data. The page is the record and the ledger a view of it; two ledgers whose lines agree still stand with no page behind them. Usually the giver writes the page on their own site from the site's Time Transaction Template, and the receiver signs off by adding the line to their ledger, forking the page first to comment or query."
+    },
+    {
+      "type": "transaction",
+      "id": "e94862f0a863aa8d",
+      "text": "GIVER: [https://alice.wiki/view/alices-ledger Alice's Ledger]\nRECEIVER: [https://david.wiki/view/davids-ledger David's Ledger]\nHOURS: 1 hour\nDATE: 3 September 2026\nWHAT: Repairs\nSOURCE: hand\nPlaned the shed door and re-hung the gate."
+    },
+    {
+      "type": "markdown",
+      "id": "1b217a22efd4cfc9",
+      "text": "The `transaction` item above (wiki-plugin-transaction, whose code ships in this package) draws the facts as a card and exposes them to the lineup the way map and calendar items do: the class `transaction-source` and a `transactionData()` function on its element. Name both ledgers by external link, so the page means the same on every site it is forked to."
+    },
+    {
+      "type": "markdown",
+      "id": "2bc43234fd5ad2f6",
+      "text": "An entry's label may be a link to its transaction page \u2014 `[[Repairs for David, 3 September]] for [https://david.wiki/view/davids-ledger David's Ledger]: 1 hour` on the giver's site, `[https://alice.wiki/view/repairs-for-david-3-september Repairs for David, 3 September] from [https://alice.wiki/view/alices-ledger Alice's Ledger]: 1 hour` on the receiver's. When both ledgers link the same page, by site and slug, they match by page before any comparison of label and hours; label-and-hours matching stays the fallback."
+    },
+    {
+      "type": "markdown",
+      "id": "95b9ffe84f3c0f6b",
+      "text": "A ledger with a `LINEUP` line **thaws**: it gathers transaction items from pages standing to its left in the lineup, and from the pages on its own site that link [[Time Transaction]] (as every page made from the template does), and shows the entries they imply for this ledger, marked *pulled*. A page already linked by a written line is never shown twice. **Freeze** \u2014 on the Ledger Verification Tool, or by saving the editor, which opens on the frozen text while entries are pulled \u2014 writes them into the ledger's own text, so it stands alone; `LINEUP` stays, so it keeps thawing."
+    },
+    {
+      "type": "markdown",
+      "id": "42faa381a28e2cdf",
+      "text": "# From a Message\nAn audio note or a chat message becomes a page"
+    },
+    {
+      "type": "markdown",
+      "id": "0bc65afe61c982da",
+      "text": "A transaction page is often made from a message. **Audio note**: record it with the Voice Tool (wiki-plugin-audionote), transcribe it, and fill the template \u2014 the speaker's ledger as GIVER, the ledger they name as RECEIVER, the time they give as HOURS, the transcript as the note, `SOURCE: audio note`, and the recording on the page. **Chat**: a Record message sent the [[Time Bank by Message]] way carries the same facts \u2014 who, for whom, how long, what \u2014 and fills the template the same way, with `SOURCE: chat message`. Either way the receiver then signs off in their own ledger, by hand or by Freeze."
+    },
+    {
+      "type": "markdown",
       "id": "b7d3f19e42a80c11",
-      "text": "## Repositories\n\nSource on GitHub: https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank\n\nPackage on npm: https://www.npmjs.com/package/wiki-plugin-timebank"
+      "text": "# Repositories\n\nSource on GitHub: https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank\n\nPackage on npm: https://www.npmjs.com/package/wiki-plugin-timebank"
     },
     {
       "type": "markdown",
       "id": "a1b2c3d4e5001001",
-      "text": "## Version"
+      "text": "# Version"
     },
     {
       "type": "markdown",
       "id": "a1b2c3d4e5001002",
-      "text": "**Version:** 0.1.1\n\n**Built:** Sun, 07 Jun 2026 13:27 BST\n\n**Change:** Date label moved from HTML `<caption>` to a `<div>` below the table. Chrome's UA stylesheet forces `caption-side:top` on `<caption>` elements and cannot be overridden by inline styles. See [[Table Formatting]] for the updated markup.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/`\n\n**Installed:** `~/.nvm/versions/node/v21.0.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/`"
+      "text": "**Version:** 0.4.0\n\n**Built:** Wed, 23 Sep 2026 14:34:26 GMT\n\n**Change:** Time Transaction pages. An entry label may link its transaction page, and a shared page is the strongest match; `LINEUP` pulls entries from transaction items in the lineup and on the ledger's own site; the `transaction` item type (served by the tiny wiki-plugin-transaction package, code in this bundle); the Ledger Verification Tool becomes a plugin page (`pages/ledger-verification-tool`, listed in factory.json) whose `TOOL` item reports on the ledger to its left, Result first and coloured, with sign-off per transaction, Freeze, Send, Find and Fix. New `src/client/txn.js`, `links.js`, `transaction.js`. 0.3.0 added cross-site ledgers and the tool; 0.2.0 linked ledgers, `NOTIFY:` and the badge.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/` (transaction package in `transaction/`)\n\n**Installed:** `~/.nvm/versions/node/v24.18.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` and `wiki-plugin-transaction` (laptop, dev symlinks) \u00b7 `/usr/lib/node_modules/wiki/node_modules/` (Pi5)"
     }
   ],
   "journal": [
@@ -98,6 +188,412 @@
       },
       "after": "7fcf2dca250dd60f",
       "date": 1783333574330
+    },
+    {
+      "type": "edit",
+      "id": "21341e728c47230c",
+      "item": {
+        "type": "markdown",
+        "id": "21341e728c47230c",
+        "text": "The TimeBank plugin displays a list of time entries as a dated ledger. Each line in the item text is one entry. Lines ending with a time amount are summed into a running total. The column header shows the end date of the batch. Since 0.2.0 an entry can name a counterparty ledger \u2014 `Gardening for [[Alice Ledger]]: 2 hours` \u2014 and a **Verified** badge checks that the other ledger records the same hours the other way round. Labels and captions go through the wiki's link resolver, so [[wikilinks]] work everywhere in the item. See [[Table Formatting]] for the HTML markup used to render the table."
+      },
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "edit",
+      "id": "8952b36884fad15a",
+      "item": {
+        "type": "markdown",
+        "id": "8952b36884fad15a",
+        "text": "# Entering Time"
+      },
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "edit",
+      "id": "570314c34d9c6085",
+      "item": {
+        "type": "markdown",
+        "id": "570314c34d9c6085",
+        "text": "# Date Handling"
+      },
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "edit",
+      "id": "a1b2c3d4e5001001",
+      "item": {
+        "type": "markdown",
+        "id": "a1b2c3d4e5001001",
+        "text": "# Version"
+      },
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "edit",
+      "id": "b7d3f19e42a80c11",
+      "item": {
+        "type": "markdown",
+        "id": "b7d3f19e42a80c11",
+        "text": "# Repositories\n\nSource on GitHub: https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank\n\nPackage on npm: https://www.npmjs.com/package/wiki-plugin-timebank"
+      },
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "edit",
+      "id": "a1b2c3d4e5001002",
+      "item": {
+        "type": "markdown",
+        "id": "a1b2c3d4e5001002",
+        "text": "**Version:** 0.2.0\n\n**Built:** Wed, 23 Sep 2026 11:14:42 GMT\n\n**Change:** Linked ledgers (`for`/`to`/`from`/`by [[Page]]`), `LEDGER:` and `NOTIFY:` commands, the Verified badge and the ntfy verification message. Captions and entry rows now go through `wiki.resolveLinks` with an escaping sanitiser \u2014 before 0.2.0 the caption was inserted as raw HTML and its links were not resolved. The parser moved to `src/client/parse.js`, the matching to `src/client/verify.js`.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/`\n\n**Installed:** `~/.nvm/versions/node/v24.18.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` (laptop) \u00b7 `/usr/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` (Pi5)"
+      },
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "5324b88a2f3b51c2",
+      "item": {
+        "type": "markdown",
+        "id": "5324b88a2f3b51c2",
+        "text": "# Commands\nLines that set the ledger up rather than record time"
+      },
+      "after": "7fcf2dca250dd60f",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "c1cecc47bb6f159a",
+      "item": {
+        "type": "table",
+        "id": "c1cecc47bb6f159a",
+        "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| LEDGER: | LEDGER: alice.localhost/alice-ledger | Where a counterparty page lives (site/slug); repeat for each counterparty on another site |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic a badge click posts to; https unless you write http:// |"
+      },
+      "after": "5324b88a2f3b51c2",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "b7ce35f238cd5ec1",
+      "item": {
+        "type": "markdown",
+        "id": "b7ce35f238cd5ec1",
+        "text": "# Linked Ledgers\nA double entry between two pages"
+      },
+      "after": "c1cecc47bb6f159a",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "511f4abddf458ec6",
+      "item": {
+        "type": "markdown",
+        "id": "511f4abddf458ec6",
+        "text": "An entry that ends `for [[Page]]` or `to [[Page]]` records hours **I gave** to the ledger on that page. One that ends `from [[Page]]` or `by [[Page]]` records hours **I received**. The other ledger confirms it with the opposite word and a link back to my page. A link without a direction word \u2014 `Meeting with [[David]]: 2 hours` \u2014 is an ordinary entry that happens to contain a link."
+      },
+      "after": "b7ce35f238cd5ec1",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "99cdc1709ebb3b58",
+      "item": {
+        "type": "timebank",
+        "id": "99cdc1709ebb3b58",
+        "text": "START: 1 September 2026\nEND: 7 September 2026\nNOTIFY: ntfy.sh/timebank-demo-david\nGardening for [[Alice Ledger]]: 2 hours\nRepairs from [[Alice Ledger]]: 1 hour\nA week of swaps with [[Alice Ledger]]."
+      },
+      "after": "511f4abddf458ec6",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "46a90ffb474d085b",
+      "item": {
+        "type": "markdown",
+        "id": "46a90ffb474d085b",
+        "text": "Two entries match when the other entry links back to this page, runs the opposite way, has the same minutes, and the same label once case, spacing and trailing punctuation are ignored. Each counter-entry confirms one entry only. When both items declare START/END the periods must overlap. On this about page Alice Ledger does not exist, so the badge above is red."
+      },
+      "after": "99cdc1709ebb3b58",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "2565e0c18332453d",
+      "item": {
+        "type": "markdown",
+        "id": "2565e0c18332453d",
+        "text": "# Verification Badge\nGreen, orange or red beside the column header"
+      },
+      "after": "46a90ffb474d085b",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "c882bdda56bd72d0",
+      "item": {
+        "type": "markdown",
+        "id": "c882bdda56bd72d0",
+        "text": "A ledger with linked entries shows a badge: **Verified** (green) when every linked entry is matched, **Partly verified** (orange) when some are, **Not verified** (red) when none are or a counterparty page cannot be reached. Hover for the detail: how many matched, which entries did not and where the plugin looked. The counterparty page is found by its `LEDGER:` hint, else on this page's own site, else on any neighbourhood site whose sitemap lists it. The check runs in the browser; the last result is kept on the item as `item.verified`."
+      },
+      "after": "2565e0c18332453d",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "39023f1c68d65c2a",
+      "item": {
+        "type": "markdown",
+        "id": "39023f1c68d65c2a",
+        "text": "# Notify Topic\nClick the badge to ask for confirmation"
+      },
+      "after": "c882bdda56bd72d0",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "add",
+      "id": "d7a03d9baa6c3c14",
+      "item": {
+        "type": "markdown",
+        "id": "d7a03d9baa6c3c14",
+        "text": "A single click on the badge re-runs the check. With a `NOTIFY:` line it then posts one message per counterparty to that [https://ntfy.sh ntfy] topic: the title names the ledger, the tags carry the status, the click link opens the counterparty page, and the body lists each entry as `Confirmed: \u2026 \u2014 matched` or `Verify: \u2026 \u2014 unmatched in site/slug`. The tooltip then says sent or send failed. Without a `NOTIFY:` line the click only re-verifies. Double-click anywhere else on the ledger still opens the editor."
+      },
+      "after": "39023f1c68d65c2a",
+      "date": 1790161690359,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) executing the [[Timebank Verification Plan]]."
+    },
+    {
+      "type": "edit",
+      "id": "21341e728c47230c",
+      "item": {
+        "type": "markdown",
+        "id": "21341e728c47230c",
+        "text": "The TimeBank plugin displays a list of time entries as a dated ledger. Each line in the item text is one entry. Lines ending with a time amount are summed into a running total. The column header shows the end date of the batch. An entry can name a counterparty ledger \u2014 `Gardening for [[Alice Ledger]]: 2 hours` on the same site, or `Gardening for [https://alice.wiki/view/alices-ledger Alice's Ledger]: 2 hours` on another site \u2014 and a **Verified** badge checks that the other ledger records the same hours the other way round. Clicking the badge opens a **Ledger Verification Tool** page beside the ledger. Labels and captions go through the wiki's link resolver, so [[wikilinks]] work everywhere in the item. See [[Table Formatting]] for the HTML markup used to render the table."
+      },
+      "date": 1790171171301
+    },
+    {
+      "type": "edit",
+      "id": "c1cecc47bb6f159a",
+      "item": {
+        "type": "table",
+        "id": "c1cecc47bb6f159a",
+        "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic the tool page's Send verification message button posts to; https unless you write http:// |"
+      },
+      "date": 1790171171301
+    },
+    {
+      "type": "edit",
+      "id": "511f4abddf458ec6",
+      "item": {
+        "type": "markdown",
+        "id": "511f4abddf458ec6",
+        "text": "An entry that ends `for` or `to` a ledger records hours **I gave** to it. One that ends `from` or `by` a ledger records hours **I received**. Name a ledger on this same site with a wikilink, `for [[Alice Ledger]]`. Name a ledger on **another site** with an external link to the exact page, `for [https://alice.wiki/view/alices-ledger Alice's Ledger]` \u2014 it opens in a new tab and carries the site in its address. `http://`, `//site/slug`, ports, a trailing slash and a `.html` or `.json` suffix are accepted; write `/view/slug`, because a wiki answers that address and not a bare `/slug`. The other ledger confirms an entry with the opposite word and a link back to this page. A link without a direction word \u2014 `Meeting with [[David]]: 2 hours` \u2014 is an ordinary entry that happens to contain a link. The old `LEDGER:` command is gone since 0.3.0."
+      },
+      "date": 1790171171301
+    },
+    {
+      "type": "edit",
+      "id": "46a90ffb474d085b",
+      "item": {
+        "type": "markdown",
+        "id": "46a90ffb474d085b",
+        "text": "A ledger is identified by its **site plus its slug**, never its title alone: two pages called David's Ledger on two sites are two ledgers and never match each other. A wikilink on the other ledger names the other ledger's own site, so it only points back here when both ledgers share a site; across sites the other ledger must name this one by external link. Two entries match when the other entry points back at this exact ledger, runs the opposite way, has the same minutes, and the same label once case, spacing and trailing punctuation are ignored. Each counter-entry confirms one entry only. When both items declare START/END the periods must overlap. On this about page Alice Ledger does not exist, so the badge above is red."
+      },
+      "date": 1790171171301
+    },
+    {
+      "type": "edit",
+      "id": "c882bdda56bd72d0",
+      "item": {
+        "type": "markdown",
+        "id": "c882bdda56bd72d0",
+        "text": "A ledger with linked entries shows a badge: **Verified** (green) when every linked entry is matched, **Partly verified** (orange) when some are, **Not verified** (red) when none are or a counterparty ledger cannot be reached. Hover for the detail: how many matched, which entries did not, and the address of the ledger that was checked. Each counterparty site named by external link is registered as a neighbour, so its flag shows and its pages resolve. The check runs in the browser; the last result is kept on the item as `item.verified`, with the time and the site that checked it."
+      },
+      "date": 1790171171301
+    },
+    {
+      "type": "edit",
+      "id": "39023f1c68d65c2a",
+      "item": {
+        "type": "markdown",
+        "id": "39023f1c68d65c2a",
+        "text": "# Ledger Verification Tool\nClick the badge for a page that says what was checked"
+      },
+      "date": 1790171171301
+    },
+    {
+      "type": "edit",
+      "id": "d7a03d9baa6c3c14",
+      "item": {
+        "type": "markdown",
+        "id": "d7a03d9baa6c3c14",
+        "text": "A single click on the badge re-checks and opens a Ledger Verification Tool page beside the ledger. It is generated in the browser and never stored. It names the ledger, its site, when and from where it was checked, and the status; a table lists every linked entry with its direction, hours, label, counterparty ledger and result \u2014 matched, unmatched or ledger unreachable. **Send verification message** posts one message per counterparty to the `NOTIFY:` [https://ntfy.sh ntfy] topic \u2014 title, status tags, a click link to the counterparty ledger, and a body of `Confirmed: \u2026 \u2014 matched` or `Verify: \u2026 \u2014 unmatched in <ledger address>` lines \u2014 and shows sent or send failed. **Find missing ledgers** lists, for every unreachable or unmatched counterparty, pages whose title or slug matches in the neighbourhood and on the sites this page links to. A **Fix** button beside each candidate rewrites those entry lines to name it by external link, saves the ledger and checks again; it needs the browser to be logged in as the site owner and says so when it is not. Double-click anywhere else on the ledger still opens the editor."
+      },
+      "date": 1790171171301
+    },
+    {
+      "type": "edit",
+      "id": "a1b2c3d4e5001002",
+      "item": {
+        "type": "markdown",
+        "id": "a1b2c3d4e5001002",
+        "text": "**Version:** 0.3.0\n\n**Built:** Wed, 23 Sep 2026 13:33:42 GMT\n\n**Change:** Cross-site ledgers named by external link, identity by site plus slug, counterparty sites registered as neighbours, and the Ledger Verification Tool page (report, send, find, fix) opened by the badge. `LEDGER:` removed. New `src/client/tool.js`. 0.2.0 added linked ledgers, `NOTIFY:`, the badge and link-resolved captions.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/`\n\n**Installed:** `~/.nvm/versions/node/v24.18.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` (laptop) \u00b7 `/usr/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` (Pi5)"
+      },
+      "date": 1790171171301
+    },
+    {
+      "type": "edit",
+      "id": "21341e728c47230c",
+      "item": {
+        "type": "markdown",
+        "id": "21341e728c47230c",
+        "text": "The TimeBank plugin displays a list of time entries as a dated ledger. Each line in the item text is one entry. Lines ending with a time amount are summed into a running total. The column header shows the end date of the batch. An entry can name a counterparty ledger \u2014 `Gardening for [[Alice Ledger]]: 2 hours` on the same site, or `Gardening for [https://alice.wiki/view/alices-ledger Alice's Ledger]: 2 hours` on another site \u2014 and a **Verified** badge checks that the other ledger records the same hours the other way round. Clicking the badge opens the **Ledger Verification Tool** page beside the ledger. Since 0.4.0 an entry's label can link the **Time Transaction** page that records the work, and a ledger with a `LINEUP` line pulls its entries from those pages. Labels and captions go through the wiki's link resolver, so [[wikilinks]] work everywhere in the item. See [[Table Formatting]] for the HTML markup used to render the table."
+      },
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "edit",
+      "id": "c1cecc47bb6f159a",
+      "item": {
+        "type": "table",
+        "id": "c1cecc47bb6f159a",
+        "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic the tool page's Send verification message button posts to; https unless you write http:// |\n| LINEUP | LINEUP | Pull entries from Time Transaction pages to the left in the lineup and on this site that name this ledger, marked as pulled (thaw) |\n| TOOL | TOOL | Makes the item the Ledger Verification Tool's report: it checks the ledger on the page to its left |"
+      },
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "edit",
+      "id": "d7a03d9baa6c3c14",
+      "item": {
+        "type": "markdown",
+        "id": "d7a03d9baa6c3c14",
+        "text": "A single click on the badge opens the **Ledger Verification Tool** beside the ledger. It is a plugin page, shipped in this package's `pages/` and served on every site of the farm (green, like other plugin pages; also in the \u2630 menu). Its timebank item runs in `TOOL` mode: it finds the ledger on the page to its left, checks it and draws the report \u2014 which ledger, which site, when and from where it was checked, and the status. The **Entries** table puts the Result first, coloured like the badge: matched (green, *by page* when both ledgers link one transaction page), unmatched or ledger unreachable (red), with direction, hours, label, counterparty ledger and transaction page. **Transactions** gives each transaction page's sign-off: accepted, in dialogue or awaiting sign-off. **Freeze** writes pulled entries into the ledger. **Send verification message** posts one message per counterparty to the `NOTIFY:` [https://ntfy.sh ntfy] topic \u2014 title, status tags, a click link to the counterparty ledger, and a body of `Confirmed: \u2026 \u2014 matched` or `Verify: \u2026 \u2014 unmatched in <ledger address>` lines. **Find missing ledgers** lists candidates for every unreachable or unmatched counterparty, each with a **Fix** button that rewrites those entry lines to name it by external link, and lists entries with no transaction page as new pages to create from the Time Transaction Template. Freeze and Fix save through the wiki's page handler, so they need the browser to be logged in as the site owner, and say so when it is not. Double-click anywhere else on the ledger still opens the editor."
+      },
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "e6446c2dc9c09da4",
+      "item": {
+        "type": "markdown",
+        "id": "e6446c2dc9c09da4",
+        "text": "# Time Transaction Pages\nThe work behind the line"
+      },
+      "after": "d7a03d9baa6c3c14",
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "d2fe3e2f9d9226de",
+      "item": {
+        "type": "markdown",
+        "id": "d2fe3e2f9d9226de",
+        "text": "A ledger line is a summary; a **Time Transaction** page records the work \u2014 who gave, who received, how long, when, what was done \u2014 with a `transaction` item holding the same facts as data. The page is the record and the ledger a view of it; two ledgers whose lines agree still stand with no page behind them. Usually the giver writes the page on their own site from the site's Time Transaction Template, and the receiver signs off by adding the line to their ledger, forking the page first to comment or query."
+      },
+      "after": "e6446c2dc9c09da4",
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "e94862f0a863aa8d",
+      "item": {
+        "type": "transaction",
+        "id": "e94862f0a863aa8d",
+        "text": "GIVER: [https://alice.wiki/view/alices-ledger Alice's Ledger]\nRECEIVER: [https://david.wiki/view/davids-ledger David's Ledger]\nHOURS: 1 hour\nDATE: 3 September 2026\nWHAT: Repairs\nSOURCE: hand\nPlaned the shed door and re-hung the gate."
+      },
+      "after": "d2fe3e2f9d9226de",
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "1b217a22efd4cfc9",
+      "item": {
+        "type": "markdown",
+        "id": "1b217a22efd4cfc9",
+        "text": "The `transaction` item above (wiki-plugin-transaction, whose code ships in this package) draws the facts as a card and exposes them to the lineup the way map and calendar items do: the class `transaction-source` and a `transactionData()` function on its element. Name both ledgers by external link, so the page means the same on every site it is forked to."
+      },
+      "after": "e94862f0a863aa8d",
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "2bc43234fd5ad2f6",
+      "item": {
+        "type": "markdown",
+        "id": "2bc43234fd5ad2f6",
+        "text": "An entry's label may be a link to its transaction page \u2014 `[[Repairs for David, 3 September]] for [https://david.wiki/view/davids-ledger David's Ledger]: 1 hour` on the giver's site, `[https://alice.wiki/view/repairs-for-david-3-september Repairs for David, 3 September] from [https://alice.wiki/view/alices-ledger Alice's Ledger]: 1 hour` on the receiver's. When both ledgers link the same page, by site and slug, they match by page before any comparison of label and hours; label-and-hours matching stays the fallback."
+      },
+      "after": "1b217a22efd4cfc9",
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "95b9ffe84f3c0f6b",
+      "item": {
+        "type": "markdown",
+        "id": "95b9ffe84f3c0f6b",
+        "text": "A ledger with a `LINEUP` line **thaws**: it gathers transaction items from pages standing to its left in the lineup, and from the pages on its own site that link [[Time Transaction]] (as every page made from the template does), and shows the entries they imply for this ledger, marked *pulled*. A page already linked by a written line is never shown twice. **Freeze** \u2014 on the Ledger Verification Tool, or by saving the editor, which opens on the frozen text while entries are pulled \u2014 writes them into the ledger's own text, so it stands alone; `LINEUP` stays, so it keeps thawing."
+      },
+      "after": "2bc43234fd5ad2f6",
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "42faa381a28e2cdf",
+      "item": {
+        "type": "markdown",
+        "id": "42faa381a28e2cdf",
+        "text": "# From a Message\nAn audio note or a chat message becomes a page"
+      },
+      "after": "95b9ffe84f3c0f6b",
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "0bc65afe61c982da",
+      "item": {
+        "type": "markdown",
+        "id": "0bc65afe61c982da",
+        "text": "A transaction page is often made from a message. **Audio note**: record it with the Voice Tool (wiki-plugin-audionote), transcribe it, and fill the template \u2014 the speaker's ledger as GIVER, the ledger they name as RECEIVER, the time they give as HOURS, the transcript as the note, `SOURCE: audio note`, and the recording on the page. **Chat**: a Record message sent the [[Time Bank by Message]] way carries the same facts \u2014 who, for whom, how long, what \u2014 and fills the template the same way, with `SOURCE: chat message`. Either way the receiver then signs off in their own ledger, by hand or by Freeze."
+      },
+      "after": "42faa381a28e2cdf",
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "edit",
+      "id": "a1b2c3d4e5001002",
+      "item": {
+        "type": "markdown",
+        "id": "a1b2c3d4e5001002",
+        "text": "**Version:** 0.4.0\n\n**Built:** Wed, 23 Sep 2026 14:34:26 GMT\n\n**Change:** Time Transaction pages. An entry label may link its transaction page, and a shared page is the strongest match; `LINEUP` pulls entries from transaction items in the lineup and on the ledger's own site; the `transaction` item type (served by the tiny wiki-plugin-transaction package, code in this bundle); the Ledger Verification Tool becomes a plugin page (`pages/ledger-verification-tool`, listed in factory.json) whose `TOOL` item reports on the ledger to its left, Result first and coloured, with sign-off per transaction, Freeze, Send, Find and Fix. New `src/client/txn.js`, `links.js`, `transaction.js`. 0.3.0 added cross-site ledgers and the tool; 0.2.0 linked ledgers, `NOTIFY:` and the badge.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/` (transaction package in `transaction/`)\n\n**Installed:** `~/.nvm/versions/node/v24.18.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` and `wiki-plugin-transaction` (laptop, dev symlinks) \u00b7 `/usr/lib/node_modules/wiki/node_modules/` (Pi5)"
+      },
+      "date": 1790174173702,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-timebank 0.4.0, Phase 7 of the Timebank Verification Plan."
     }
   ],
   "plugin": "timebank"

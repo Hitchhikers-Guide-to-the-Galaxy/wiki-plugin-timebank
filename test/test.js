@@ -133,3 +133,940 @@ describe('timebank plugin', () => {
   })
 
 })
+
+// ---------------------------------------------------------------------------
+// 0.2.0 — markup, linked-ledger grammar, verification, messages
+// ---------------------------------------------------------------------------
+
+const {
+  markup, escape, extractCaption, extractCommands, asSlug, normLabel, isCommand,
+  matchLedgers, deriveStatus, verifyItem, formatVerifyMessages, entryKey, periodOf, schemeFor
+} = timebank
+
+// A stand-in for wiki.resolveLinks with the same four-phase contract:
+// adulterate stray markers, stash links as 〖n〗, sanitize, unstash.
+const fakeResolve = (string, sanitize) => {
+  const stashed = []
+  const stash = html => { stashed.push(html); return `〖${stashed.length - 1}〗` }
+  string = string
+    .replace(/〖(\d+)〗/g, '〖 $1 〗')
+    .replace(/\[\[([^\]]+)\]\]/g, (m, name) => stash(`<a class="internal" data-page-name="${asSlug(name)}">${name}</a>`))
+  return sanitize(string).replace(/〖(\d+)〗/g, (m, d) => stashed[+d])
+}
+
+describe('timebank 0.2.0', () => {
+
+  describe('markup', () => {
+    test('fallback escapes html when no resolver', () => {
+      assert.equal(markup('<script>alert(1)</script> & [[Home]]'), '&lt;script&gt;alert(1)&lt;/script&gt; &amp; [[Home]]')
+    })
+
+    test('with a resolver: script escaped, link markers survive the sanitiser', () => {
+      const html = markup('See [[Alice Ledger]] <script>x</script>', fakeResolve)
+      assert.ok(html.includes('<a class="internal" data-page-name="alice-ledger">Alice Ledger</a>'))
+      assert.ok(html.includes('&lt;script&gt;x&lt;/script&gt;'))
+      assert.ok(!html.includes('〖'))
+    })
+
+    test('escape passes 〖n〗 markers untouched', () => {
+      assert.equal(escape('a〖0〗<b>'), 'a〖0〗&lt;b&gt;')
+    })
+  })
+
+  describe('linked-ledger grammar', () => {
+    test('for and to are hours I gave', () => {
+      const [a, b] = parseEntries('Gardening for [[Alice Ledger]]: 2 hours\nLessons to [[Bob Ledger]]: 30 mins')
+      assert.equal(a.linked, true)
+      assert.equal(a.direction, 'gave')
+      assert.equal(a.label, 'Gardening')
+      assert.deepEqual(a.counterparty, { name: 'Alice Ledger', slug: 'alice-ledger' })
+      assert.equal(b.direction, 'gave')
+      assert.equal(b.time, 0.5)
+    })
+
+    test('from and by are hours I received', () => {
+      const [a, b] = parseEntries('Repairs from [[Alice Ledger]]: 1 hour\nLift given by [[Bob]]: 1h')
+      assert.equal(a.direction, 'received')
+      assert.equal(a.label, 'Repairs')
+      assert.equal(b.direction, 'received')
+      assert.equal(b.counterparty.slug, 'bob')
+    })
+
+    test('a wikilink without a direction word stays unlinked', () => {
+      const [e] = parseEntries('Meeting with [[David]]: 2 hours')
+      assert.equal(e.linked, false)
+      assert.equal(e.label, 'Meeting with [[David]]')
+      assert.equal(e.time, 2)
+    })
+
+    test('counterparty slug follows the wiki rule', () => {
+      const [e] = parseEntries("Help for [[Carol's Ledger 2]]: 1 hour")
+      assert.equal(e.counterparty.slug, 'carols-ledger-2')
+    })
+
+    test('NOTIFY is a command, not an entry or caption; LEDGER is no longer a command', () => {
+      const text = 'NOTIFY: ntfy.sh/timebank-david\nGardening for [[Alice Ledger]]: 2 hours\nA prose caption with [[Links]].'
+      assert.ok(!isCommand('LEDGER: alice.localhost/alice-ledger'))
+      assert.ok(isCommand('notify: ntfy.sh/x'))
+      assert.equal(parseEntries(text).length, 1)
+      assert.equal(extractCaption(text), 'A prose caption with [[Links]].')
+    })
+
+    test('a label that merely starts with a command word is still an entry', () => {
+      const entries = parseEntries('Starting the garden: 2 hours\nEndless admin: 1 hour')
+      assert.equal(entries.length, 2)
+      assert.equal(totalHours(entries), 3)
+    })
+
+    test('extractCommands normalises NOTIFY urls', () => {
+      const c = extractCommands('NOTIFY: ntfy.sh/timebank-david')
+      assert.deepEqual(c, { notify: 'https://ntfy.sh/timebank-david', lineup: false, tool: false })
+      assert.equal(extractCommands('NOTIFY: http://pi:4280/timebank').notify, 'http://pi:4280/timebank')
+      assert.equal(extractCommands('Gardening: 1h').notify, null)
+    })
+
+    test('normLabel lowercases, collapses space, strips trailing punctuation', () => {
+      assert.equal(normLabel('  Garden   Work. '), 'garden work')
+      assert.equal(normLabel('Repairs!!'), 'repairs')
+    })
+  })
+
+  describe('matchLedgers', () => {
+    const mine = text => parseEntries(text).filter(e => e.linked)
+    const theirs = (text, period = null) => parseEntries(text).filter(e => e.linked).map(e => ({ ...e, period }))
+    const opts = { title: 'David Ledger', period: null }
+
+    test('exact opposite entry matches', () => {
+      const m = matchLedgers(mine('Gardening for [[Alice Ledger]]: 2 hours'), theirs('Gardening from [[David Ledger]]: 2 hours'), opts)
+      assert.equal(m.matched.length, 1)
+      assert.equal(m.unmatched.length, 0)
+    })
+
+    test('the same direction on both sides does not match', () => {
+      const m = matchLedgers(mine('Gardening for [[Alice Ledger]]: 2 hours'), theirs('Gardening for [[David Ledger]]: 2 hours'), opts)
+      assert.equal(m.matched.length, 0)
+    })
+
+    test('different hours do not match; 120 mins equals 2 hours', () => {
+      assert.equal(matchLedgers(mine('Gardening for [[Alice Ledger]]: 2 hours'), theirs('Gardening from [[David Ledger]]: 3 hours'), opts).matched.length, 0)
+      assert.equal(matchLedgers(mine('Gardening for [[Alice Ledger]]: 2 hours'), theirs('Gardening from [[David Ledger]]: 120 mins'), opts).matched.length, 1)
+    })
+
+    test('labels match after normalisation', () => {
+      const m = matchLedgers(mine('Garden  work. for [[Alice Ledger]]: 2 hours'), theirs('garden work from [[David Ledger]]: 2 hours'), opts)
+      assert.equal(m.matched.length, 1)
+    })
+
+    test('multiset: each counter-entry is consumed once', () => {
+      const m = matchLedgers(
+        mine('Gardening for [[Alice Ledger]]: 1 hour\nGardening for [[Alice Ledger]]: 1 hour'),
+        theirs('Gardening from [[David Ledger]]: 1 hour'), opts)
+      assert.equal(m.matched.length, 1)
+      assert.equal(m.unmatched.length, 1)
+    })
+
+    test('the counter-entry must point back at my page', () => {
+      const m = matchLedgers(mine('Gardening for [[Alice Ledger]]: 2 hours'), theirs('Gardening from [[Someone Else]]: 2 hours'), opts)
+      assert.equal(m.matched.length, 0)
+    })
+
+    test('periods must overlap when both declare them; a missing period skips the check', () => {
+      const sep = periodOf(extractDates('START: 1 September 2026\nEND: 7 September 2026'))
+      const oct = periodOf(extractDates('START: 1 October 2026\nEND: 7 October 2026'))
+      const mid = periodOf(extractDates('START: 5 September 2026\nEND: 12 September 2026'))
+      const e = mine('Gardening for [[Alice Ledger]]: 2 hours')
+      const f = 'Gardening from [[David Ledger]]: 2 hours'
+      assert.equal(matchLedgers(e, theirs(f, oct), { ...opts, period: sep }).matched.length, 0)
+      assert.equal(matchLedgers(e, theirs(f, mid), { ...opts, period: sep }).matched.length, 1)
+      assert.equal(matchLedgers(e, theirs(f, null), { ...opts, period: sep }).matched.length, 1)
+      assert.equal(matchLedgers(e, theirs(f, oct), opts).matched.length, 1)
+    })
+
+    test('entryKey is stable across direction, slug, minutes and label', () => {
+      const [e] = mine('Gardening for [[Alice Ledger]]: 2 hours')
+      assert.equal(entryKey(e), 'gave|alice-ledger|120|gardening')
+    })
+  })
+
+  describe('deriveStatus', () => {
+    test('ok when every linked entry matched', () => { assert.equal(deriveStatus({ linked: 2, matched: 2 }), 'ok') })
+    test('partial when some matched', () => { assert.equal(deriveStatus({ linked: 3, matched: 2 }), 'partial') })
+    test('fail when nothing matched', () => { assert.equal(deriveStatus({ linked: 2, matched: 0 }), 'fail') })
+    test('fail when a counterparty is unreachable', () => { assert.equal(deriveStatus({ linked: 3, matched: 2, unreachable: ['carol-ledger'] }), 'fail') })
+    test('none when there are no linked entries', () => { assert.equal(deriveStatus({ linked: 0, matched: 0 }), 'none') })
+  })
+
+  describe('verifyItem', () => {
+    const page = (title, text) => ({ title, story: [{ type: 'timebank', id: 'x', text }] })
+    const fakeCtx = (pages, sitemap = {}) => {
+      const calls = []
+      return {
+        calls,
+        title: 'David Ledger',
+        site: 'localhost:4243',
+        fetchPage: async (site, slug) => { calls.push(`${site}/${slug}`); return pages[`${site}/${slug}`] || null },
+        sitesFor: slug => Object.keys(sitemap).filter(site => sitemap[site].includes(slug))
+      }
+    }
+    const david = [
+      'START: 1 September 2026', 'END: 7 September 2026', 'NOTIFY: ntfy.sh/timebank-demo-david',
+      'Gardening for [[Alice Ledger]]: 2 hours', 'Repairs from [[Alice Ledger]]: 1 hour', 'Cooking for [[Bob Ledger]]: 1 hour'
+    ].join('\n')
+    const alice = page('Alice Ledger', 'Gardening from [[David Ledger]]: 2 hours\nRepairs for [[David Ledger]]: 1 hour')
+    const bob = page('Bob Ledger', 'Cooking from [[Carol Ledger]]: 1 hour')
+
+    test('own site first: partial when one counterparty has not recorded it', async () => {
+      const ctx = fakeCtx({ 'localhost:4243/alice-ledger': alice, 'localhost:4243/bob-ledger': bob })
+      const r = await verifyItem({ text: david }, ctx)
+      assert.equal(r.status, 'partial')
+      assert.equal(r.linked, 3)
+      assert.deepEqual(r.matched.sort(), ['gave|alice-ledger|120|gardening', 'received|alice-ledger|60|repairs'])
+      assert.equal(r.unmatched.length, 1)
+      assert.equal(r.unmatched[0].site, 'localhost:4243')
+      assert.equal(r.notify, 'https://ntfy.sh/timebank-demo-david')
+      assert.equal(ctx.calls[0], 'localhost:4243/alice-ledger')
+    })
+
+    test('a wikilink names a ledger on my own site only: a same-slug page elsewhere is never fetched', async () => {
+      const ctx = fakeCtx({ 'alice.example.org/alice-ledger': alice }, { 'alice.example.org': ['alice-ledger'] })
+      const r = await verifyItem({ text: 'Gardening for [[Alice Ledger]]: 2 hours' }, ctx)
+      assert.equal(r.status, 'fail')
+      assert.deepEqual(ctx.calls, ['localhost:4243/alice-ledger'])
+      assert.deepEqual(r.unreachable, ['localhost:4243/alice-ledger'])
+    })
+
+    test('404 everywhere means unreachable and red', async () => {
+      const ctx = fakeCtx({})
+      ctx.title = 'Bob Ledger'
+      const r = await verifyItem({ text: 'Cooking from [[Carol Ledger]]: 1 hour' }, ctx)
+      assert.equal(r.status, 'fail')
+      assert.deepEqual(r.unreachable, ['localhost:4243/carol-ledger'])
+    })
+
+    test('a thrown fetch counts as unreachable', async () => {
+      const ctx = fakeCtx({})
+      ctx.fetchPage = async () => { throw new Error('offline') }
+      const r = await verifyItem({ text: 'Gardening for [[Alice Ledger]]: 2 hours' }, ctx)
+      assert.equal(r.status, 'fail')
+    })
+
+    test('no linked entries: status none, nothing fetched', async () => {
+      const ctx = fakeCtx({})
+      const r = await verifyItem({ text: 'Meeting with [[David]]: 2 hours' }, ctx)
+      assert.equal(r.status, 'none')
+      assert.equal(ctx.calls.length, 0)
+    })
+
+    test('the counterparty sees green for the same pair', async () => {
+      const ctx = fakeCtx({ 'localhost:4243/david-ledger': page('David Ledger', david) })
+      ctx.title = 'Alice Ledger'
+      const r = await verifyItem(alice.story[0], ctx)
+      assert.equal(r.status, 'ok')
+    })
+  })
+
+  describe('formatVerifyMessages', () => {
+    const david = [
+      'START: 1 September 2026', 'END: 7 September 2026', 'NOTIFY: ntfy.sh/timebank-demo-david',
+      'Gardening for [[Alice Ledger]]: 2 hours', 'Cooking for [[Bob Ledger]]: 1 hour'
+    ].join('\n')
+    const pages = {
+      'localhost:4243/alice-ledger': { title: 'Alice Ledger', story: [{ type: 'timebank', text: 'Gardening from [[David Ledger]]: 2 hours' }] },
+      'localhost:4243/bob-ledger': { title: 'Bob Ledger', story: [{ type: 'timebank', text: 'Cooking from [[Carol Ledger]]: 1 hour' }] }
+    }
+    const ctx = { title: 'David Ledger — café', site: 'localhost:4243', fetchPage: async (s, slug) => pages[`localhost:4243/${slug}`] || null, sitesFor: () => [] }
+
+    test('one message per counterparty with ASCII title, tags, click and body', async () => {
+      const r = await verifyItem({ text: david }, { ...ctx, title: 'David Ledger' })
+      const msgs = formatVerifyMessages(r, ctx)
+      assert.equal(msgs.length, 2)
+      const [a, b] = msgs
+      assert.equal(a.url, 'https://ntfy.sh/timebank-demo-david')
+      assert.equal(a.title, 'Timebank verification: David Ledger')
+      assert.equal(a.tags, 'hourglass,white_check_mark')
+      assert.equal(a.click, 'http://localhost:4243/view/alice-ledger')
+      assert.equal(a.body, 'Confirmed: David Ledger gave Alice Ledger 2h Gardening (1 Sep 2026 – 7 Sep 2026) — matched')
+      assert.equal(b.tags, 'hourglass,x')
+      assert.equal(b.body, 'Verify: David Ledger gave Bob Ledger 1h Cooking (1 Sep 2026 – 7 Sep 2026) — unmatched in http://localhost:4243/view/bob-ledger')
+    })
+
+    test('title stays ASCII even when the page title is not', async () => {
+      const r = await verifyItem({ text: david }, ctx)
+      const [a] = formatVerifyMessages(r, ctx)
+      assert.match(a.title, /^[\x20-\x7E]+$/)
+      assert.equal(a.title, 'Timebank verification: David Ledger - caf')
+    })
+
+    test('received entries and unreachable ledgers read plainly; partial is a warning', async () => {
+      const text = 'NOTIFY: ntfy.sh/t\nRepairs from [[Alice Ledger]]: 1 hour\nWeeding for [[Alice Ledger]]: 1 hour\nSoup for [[Carol Ledger]]: 30 mins'
+      const alicePages = { 'localhost:4243/alice-ledger': { title: 'Alice Ledger', story: [{ type: 'timebank', text: 'Repairs for [[David Ledger]]: 1 hour' }] } }
+      const c = { ...ctx, title: 'David Ledger', fetchPage: async (s, slug) => alicePages[`${s}/${slug}`] || null }
+      const msgs = formatVerifyMessages(await verifyItem({ text }, c), c)
+      assert.equal(msgs[0].tags, 'hourglass,warning')
+      assert.equal(msgs[0].body, 'Confirmed: David Ledger received from Alice Ledger 1h Repairs — matched\nVerify: David Ledger gave Alice Ledger 1h Weeding — unmatched in http://localhost:4243/view/alice-ledger')
+      assert.equal(msgs[1].tags, 'hourglass,x')
+      assert.equal(msgs[1].body, 'Verify: David Ledger gave Carol Ledger 30m Soup — http://localhost:4243/view/carol-ledger unreachable')
+    })
+
+    test('no NOTIFY line, no messages', async () => {
+      const r = await verifyItem({ text: 'Gardening for [[Alice Ledger]]: 2 hours' }, { ...ctx, title: 'David Ledger' })
+      assert.deepEqual(formatVerifyMessages(r, ctx), [])
+    })
+
+    test('click scheme: http for localhost and ported hosts, https otherwise', () => {
+      assert.equal(schemeFor('localhost:4243'), 'http:')
+      assert.equal(schemeFor('alice.localhost'), 'http:')
+      assert.equal(schemeFor('mini.local'), 'http:')
+      assert.equal(schemeFor('time.peoplepowered.money'), 'https:')
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 0.3.0 — cross-site ledgers by external link, and the Ledger Verification Tool
+// ---------------------------------------------------------------------------
+
+const {
+  parseLedgerUrl, ledgerUrl, ledgerId, normSite, sameSite, rewriteEntries,
+  findCandidates, renderReport, entryRows, formatStamp, TOOL_TITLE
+} = timebank
+
+describe('timebank 0.3.0 cross-site ledgers', () => {
+
+  describe('external-link counterparties', () => {
+    test('https link parses into site, slug and display name', () => {
+      const [e] = parseEntries("Gardening for [https://alice.wiki/alice-ledger Alice's Ledger]: 2 hours")
+      assert.equal(e.linked, true)
+      assert.equal(e.direction, 'gave')
+      assert.equal(e.label, 'Gardening')
+      assert.equal(e.time, 2)
+      assert.equal(e.counterparty.site, 'alice.wiki')
+      assert.equal(e.counterparty.slug, 'alice-ledger')
+      assert.equal(e.counterparty.name, "Alice's Ledger")
+      assert.equal(e.counterparty.external, true)
+    })
+
+    test('http with a port, /view/ path and received direction', () => {
+      const [e] = parseEntries("Repairs from [http://david.localhost:4242/view/davids-ledger David's Ledger]: 1 hour")
+      assert.equal(e.direction, 'received')
+      assert.equal(e.counterparty.site, 'david.localhost:4242')
+      assert.equal(e.counterparty.slug, 'davids-ledger')
+      assert.equal(e.counterparty.scheme, 'http:')
+    })
+
+    test('scheme-relative, trailing slash, .html and .json suffixes, lineup urls', () => {
+      assert.deepEqual(parseLedgerUrl('//alice.wiki/alice-ledger'), { site: 'alice.wiki', slug: 'alice-ledger', scheme: null })
+      assert.equal(parseLedgerUrl('https://alice.wiki/alice-ledger/').slug, 'alice-ledger')
+      assert.equal(parseLedgerUrl('https://alice.wiki/alice-ledger.html').slug, 'alice-ledger')
+      assert.equal(parseLedgerUrl('https://alice.wiki/alice-ledger.json').slug, 'alice-ledger')
+      assert.equal(parseLedgerUrl('https://alice.wiki/view/welcome-visitors/view/alice-ledger').slug, 'alice-ledger')
+      assert.equal(parseLedgerUrl('https://Alice.Wiki:443/alice-ledger').site, 'alice.wiki')
+      assert.equal(parseLedgerUrl('http://alice.wiki:8080/alice-ledger').site, 'alice.wiki:8080')
+    })
+
+    test('a link with no page path is not a ledger, so the entry stays unlinked', () => {
+      assert.equal(parseLedgerUrl('https://alice.wiki/'), null)
+      assert.equal(parseLedgerUrl('https://alice.wiki/view/'), null)
+      const [e] = parseEntries('Gardening for [https://alice.wiki Alice]: 2 hours')
+      assert.equal(e.linked, false)
+      assert.equal(e.time, 2)
+    })
+
+    test('the wikilink form carries no site: it names a ledger on its own page\'s site', () => {
+      const [e] = parseEntries('Gardening for [[Alice Ledger]]: 2 hours')
+      assert.deepEqual(e.counterparty, { name: 'Alice Ledger', slug: 'alice-ledger' })
+    })
+
+    test('the external form renders through the resolver unchanged, as an external link', () => {
+      // wiki.resolveLinks' own external rule, reproduced
+      const resolve = (string, sanitize) => {
+        const stashed = []
+        const stash = h => { stashed.push(h); return `〖${stashed.length - 1}〗` }
+        string = string.replace(/\[((?:(?:https?|ftp):|\/).*?) (.*?)\]/gi, (m, href, rest) =>
+          stash(`<a class="external" target="_blank" href="${href}">${escape(rest)}</a>`))
+        return sanitize(string).replace(/〖(\d+)〗/g, (m, d) => stashed[+d])
+      }
+      const html = markup("Gardening for [https://alice.wiki/alice-ledger Alice's Ledger]: 2 hours", resolve)
+      assert.ok(html.includes('<a class="external" target="_blank" href="https://alice.wiki/alice-ledger">Alice\'s Ledger</a>'))
+    })
+
+    test('ledger address, identity and site comparison', () => {
+      assert.equal(ledgerUrl({ site: 'alice.wiki', slug: 'alice-ledger' }), 'https://alice.wiki/view/alice-ledger')
+      assert.equal(ledgerUrl({ site: 'david.localhost:4242', slug: 'davids-ledger' }), 'http://david.localhost:4242/view/davids-ledger')
+      assert.equal(ledgerUrl({ site: 'alice.wiki', slug: 'a', scheme: 'http:' }), 'http://alice.wiki/view/a')
+      assert.equal(ledgerId({ site: 'Alice.Wiki', slug: 'alice-ledger' }), 'alice.wiki/alice-ledger')
+      assert.equal(normSite('Alice.Wiki:80'), 'alice.wiki')
+      assert.ok(sameSite('alice.wiki', 'ALICE.WIKI'))
+      assert.ok(!sameSite('alice.wiki', 'bob.wiki'))
+      assert.ok(!sameSite('alice.wiki:8080', 'alice.wiki'))
+      // a *.localhost dev farm answers with and without its port
+      assert.ok(sameSite('demo.localhost', 'demo.localhost:4242'))
+      assert.ok(!sameSite('demo.localhost:4242', 'demo.localhost:4243'))
+      assert.ok(!sameSite('david.localhost:4242', 'demo.localhost:4242'))
+    })
+  })
+
+  describe('identity by site plus slug', () => {
+    const page = (title, text) => ({ title, story: [{ type: 'timebank', id: 'x', text }] })
+    const fake = (pages, me) => {
+      const calls = []
+      return {
+        calls, ...me,
+        fetchPage: async (site, slug) => { calls.push(`${site}/${slug}`); return pages[`${site}/${slug}`] || null }
+      }
+    }
+    const DAVID = 'http://david.localhost:4242/view/davids-ledger'
+    const ALICE = 'http://demo.localhost:4242/view/alices-ledger'
+    const aliceText = `Gardening from [${DAVID} David's Ledger]: 2 hours\nRepairs for [${DAVID} David's Ledger]: 1 hour`
+    const davidText = `Gardening for [${ALICE} Alice's Ledger]: 2 hours\nRepairs from [${ALICE} Alice's Ledger]: 1 hour`
+    const otherDavidText = "Gardening for [[Alice's Ledger]]: 2 hours"
+    const pages = {
+      'demo.localhost:4242/alices-ledger': page("Alice's Ledger", aliceText),
+      'david.localhost:4242/davids-ledger': page("David's Ledger", davidText),
+      'demo.localhost:4242/davids-ledger': page("David's Ledger", otherDavidText)
+    }
+
+    test('cross-site pair by external links is green on both sides', async () => {
+      const a = fake(pages, { title: "Alice's Ledger", slug: 'alices-ledger', site: 'demo.localhost:4242' })
+      const ra = await verifyItem({ text: aliceText }, a)
+      assert.equal(ra.status, 'ok')
+      assert.deepEqual(a.calls, ['david.localhost:4242/davids-ledger'])
+      const d = fake(pages, { title: "David's Ledger", slug: 'davids-ledger', site: 'david.localhost:4242' })
+      assert.equal((await verifyItem({ text: davidText }, d)).status, 'ok')
+    })
+
+    test('same-title ledgers on two sites never match each other', async () => {
+      // the other David on demo.localhost claims the same gardening with Alice
+      const o = fake(pages, { title: "David's Ledger", slug: 'davids-ledger', site: 'demo.localhost:4242' })
+      const r = await verifyItem({ text: otherDavidText }, o)
+      assert.deepEqual(o.calls, ['demo.localhost:4242/alices-ledger'])
+      assert.equal(r.status, 'fail')
+      assert.equal(r.matched.length, 0)
+      assert.equal(r.unmatched[0].reachable, true)
+      assert.equal(r.unmatched[0].href, 'http://demo.localhost:4242/view/alices-ledger')
+    })
+
+    test('a wikilink back-pointer names its own site, so it matches only on the same site', async () => {
+      // Alice on alice.wiki writes [[David's Ledger]]: that is alice.wiki/davids-ledger
+      const alicePages = { 'alice.wiki/alices-ledger': page("Alice's Ledger", "Gardening from [[David's Ledger]]: 2 hours") }
+      const d = fake(alicePages, { title: "David's Ledger", slug: 'davids-ledger', site: 'david.wiki' })
+      const r = await verifyItem({ text: "Gardening for [https://alice.wiki/alices-ledger Alice's Ledger]: 2 hours" }, d)
+      assert.equal(r.status, 'fail')
+      // the same pair on one site matches
+      const same = { 'alice.wiki/alices-ledger': alicePages['alice.wiki/alices-ledger'] }
+      const d2 = fake(same, { title: "David's Ledger", slug: 'davids-ledger', site: 'alice.wiki' })
+      assert.equal((await verifyItem({ text: "Gardening for [[Alice's Ledger]]: 2 hours" }, d2)).status, 'ok')
+    })
+
+    test('an external link to my own site counts as naming me', async () => {
+      const selfPages = { 'alice.wiki/alices-ledger': page("Alice's Ledger", 'Gardening from [https://alice.wiki/view/davids-ledger David]: 2 hours') }
+      const d = fake(selfPages, { title: "David's Ledger", slug: 'davids-ledger', site: 'alice.wiki' })
+      assert.equal((await verifyItem({ text: "Gardening for [[Alice's Ledger]]: 2 hours" }, d)).status, 'ok')
+    })
+
+    test('matchLedgers without sites keeps the slug-only back-pointer', () => {
+      const mine = parseEntries('Gardening for [[Alice Ledger]]: 2 hours').filter(e => e.linked)
+      const theirs = parseEntries('Gardening from [[David Ledger]]: 2 hours').filter(e => e.linked)
+      assert.equal(matchLedgers(mine, theirs, { title: 'David Ledger' }).matched.length, 1)
+      assert.equal(matchLedgers(mine, theirs.map(f => ({ ...f, counterparty: { ...f.counterparty, site: 'b.wiki' } })), { title: 'David Ledger', site: 'a.wiki' }).matched.length, 0)
+    })
+
+    test('entry keys carry the site of an external counterparty', () => {
+      const [e] = parseEntries(`Gardening for [${ALICE} Alice's Ledger]: 2 hours`)
+      assert.equal(entryKey(e), 'gave|demo.localhost:4242/alices-ledger|120|gardening')
+    })
+
+    test('the message Click link and unmatched text use the external ledger address', async () => {
+      const o = fake(pages, { title: "David's Ledger", slug: 'davids-ledger', site: 'demo.localhost:4242' })
+      const r = await verifyItem({ text: `NOTIFY: ntfy.sh/t\n${otherDavidText}` }, o)
+      const [m] = formatVerifyMessages(r, o)
+      assert.equal(m.click, 'http://demo.localhost:4242/view/alices-ledger')
+      assert.equal(m.body, "Verify: David's Ledger gave Alice's Ledger 2h Gardening — unmatched in http://demo.localhost:4242/view/alices-ledger")
+      const d = fake(pages, { title: "David's Ledger", slug: 'davids-ledger', site: 'david.localhost:4242' })
+      const [n] = formatVerifyMessages(await verifyItem({ text: `NOTIFY: ntfy.sh/t\n${davidText}` }, d), d)
+      assert.equal(n.click, ALICE)
+      assert.equal(n.tags, 'hourglass,white_check_mark')
+    })
+  })
+
+  describe('rewriteEntries (Fix)', () => {
+    const href = "http://david.localhost:4242/view/davids-ledger"
+    test('rewrites only the given lines, keeping label, direction word and time', () => {
+      const text = "START: 1 September 2026\nCooking from [[David's Ledger]]: 1 hour\nGardening for [[Alice Ledger]]: 2 hours"
+      const out = rewriteEntries(text, ["Cooking from [[David's Ledger]]: 1 hour"], { href, name: "David's Ledger" })
+      assert.equal(out, `START: 1 September 2026\nCooking from [${href} David's Ledger]: 1 hour\nGardening for [[Alice Ledger]]: 2 hours`)
+      const [e] = parseEntries(out).filter(x => x.counterparty && x.counterparty.external)
+      assert.equal(e.counterparty.site, 'david.localhost:4242')
+      assert.equal(e.direction, 'received')
+    })
+
+    test('an external counterparty can be re-pointed; duplicate lines are each rewritten once', () => {
+      const line = 'Soup for [https://old.wiki/bob Bob]: 30 mins'
+      const out = rewriteEntries(`${line}\n${line}\n${line}`, [line, line], { href: 'https://new.wiki/view/bob', name: 'Bob [x]' })
+      assert.deepEqual(out.split('\n'), ['Soup for [https://new.wiki/view/bob Bob x]: 30 mins', 'Soup for [https://new.wiki/view/bob Bob x]: 30 mins', line])
+    })
+  })
+})
+
+describe('timebank 0.3.0 Ledger Verification Tool', () => {
+  const page = (title, text) => ({ title, story: [{ type: 'timebank', id: 'x', text }] })
+  const DAVID = 'http://david.localhost:4242/view/davids-ledger'
+  const bobText = "START: 1 September 2026\nEND: 7 September 2026\nNOTIFY: ntfy.sh/timebank-demo-david\nCooking from [[David's Ledger]]: 1 hour\nBread for [[Erin's Ledger]]: 2 hours"
+  const pages = {
+    'demo.localhost:4242/davids-ledger': page("David's Ledger", "Gardening for [[Alice's Ledger]]: 2 hours")
+  }
+  const ctx = {
+    title: "Bob's Ledger", slug: 'bobs-ledger', site: 'demo.localhost:4242',
+    fetchPage: async (site, slug) => pages[`${site}/${slug}`] || null
+  }
+  const sitemaps = {
+    'demo.localhost:4242': [
+      { slug: 'davids-ledger', title: "David's Ledger" },
+      { slug: 'bobs-ledger', title: "Bob's Ledger" },
+      { slug: 'welcome-visitors', title: 'Welcome Visitors' }
+    ],
+    'david.localhost:4242': [{ slug: 'davids-ledger', title: "David's Ledger" }],
+    'demo.localhost': [{ slug: 'davids-ledger', title: "David's Ledger" }],
+    'far.wiki': [{ slug: 'david-s-ledger', title: 'David’s  Ledger' }, { slug: 'erins-garden', title: 'Erin Garden' }],
+    'broken.wiki': null
+  }
+
+  describe('findCandidates', () => {
+    test('lists same-title pages elsewhere, never the ledger already checked nor myself', async () => {
+      const r = await verifyItem({ text: bobText }, ctx)
+      assert.equal(r.status, 'fail')
+      const groups = findCandidates(r, sitemaps)
+      assert.equal(groups.length, 2)
+      const [david, erin] = groups
+      assert.equal(david.reason, 'unmatched')
+      assert.equal(david.ledger.id, 'demo.localhost:4242/davids-ledger')
+      assert.deepEqual(david.candidates.map(c => `${c.site}/${c.slug}`), ['david.localhost:4242/davids-ledger', 'far.wiki/david-s-ledger'])
+      assert.equal(david.candidates[0].href, DAVID)
+      assert.equal(david.candidates[0].title, "David's Ledger")
+      assert.equal(david.searched, 4)
+      assert.equal(erin.reason, 'unreachable')
+      assert.deepEqual(erin.candidates, [])
+    })
+
+    test('a fully matched counterparty needs no finding', async () => {
+      const r = { site: 'a.wiki', slug: 'me', counterparties: [{ site: 'b.wiki', slug: 'x', name: 'X', reachable: true, matched: [{}], unmatched: [] }] }
+      assert.deepEqual(findCandidates(r, sitemaps), [])
+    })
+
+    test('slug match finds a page whose title differs', () => {
+      const r = { site: 'a.wiki', slug: 'me', counterparties: [{ site: 'a.wiki', slug: 'erins-garden', name: 'Erins Garden', reachable: false, matched: [], unmatched: [{ raw: 'x' }] }] }
+      const [g] = findCandidates(r, sitemaps)
+      assert.deepEqual(g.candidates.map(c => c.site), ['far.wiki'])
+      assert.equal(g.candidates[0].href, 'https://far.wiki/view/erins-garden')
+    })
+  })
+
+  describe('renderReport (the TOOL item on the Ledger Verification Tool page)', () => {
+    test('the report: status pill, entries with Result first, send, find, fix', async () => {
+      const r = await verifyItem({ text: bobText }, ctx)
+      const groups = findCandidates(r, sitemaps)
+      const at = Date.UTC(2026, 8, 23, 14, 5)
+      const html = renderReport({ result: r, groups, verified: { at, by: 'demo.localhost:4242' }, context: ['demo.localhost:4242'] })
+      assert.equal(TOOL_TITLE, 'Ledger Verification Tool')
+      assert.ok(html.includes('<span class="timebank-badge fail" style="margin-left:0">Not verified</span>'))
+      assert.ok(html.includes('href="http://demo.localhost:4242/view/bobs-ledger"'))
+      assert.ok(html.includes('checked 23 Sep 2026, 14:05 UTC from demo.localhost:4242'))
+      assert.ok(html.includes('0 of 2 linked entries matched; 1 counterparty ledger could not be reached'))
+      const head = html.match(/<thead><tr>(.*?)<\/tr><\/thead>/)[1]
+      assert.deepEqual([...head.matchAll(/<th [^>]*>([^<]*)<\/th>/g)].map(m => m[1]), ['Result', 'Direction', 'Hours', 'Label', 'Counterparty ledger', 'Transaction page'])
+      assert.ok(html.includes('https://ntfy.sh/timebank-demo-david'))
+      assert.ok(html.includes('<button data-timebank-action="send">Send verification message</button>'))
+      assert.ok(html.includes('data-timebank-out="send"'))
+      assert.ok(html.includes('data-timebank-action="fix" data-timebank-group="0" data-timebank-candidate="0"'))
+      assert.ok(html.includes('logged in as the owner of demo.localhost:4242'))
+      assert.ok(html.includes("<b>Erin&#39;s Ledger</b> could not be reached") || html.includes("<b>Erin's Ledger</b> could not be reached"))
+      assert.ok(html.includes('No page with this title or slug among the 4 sites searched'))
+      assert.ok(!/\[\[|\]\]/.test(html), 'no raw wikilink markup in the report')
+      assert.ok(!html.includes('<script'))
+    })
+
+    test('entry rows put a coloured Result pill first', async () => {
+      const r = await verifyItem({ text: bobText }, ctx)
+      const rows = entryRows(r, ['demo.localhost:4242'])
+      assert.equal(rows.length, 2)
+      assert.ok(rows[0][0].includes('timebank-badge fail') && rows[0][0].includes('unmatched'))
+      assert.equal(rows[0][1], 'received')
+      assert.equal(rows[0][2], '1h')
+      assert.equal(rows[0][3], 'Cooking')
+      assert.ok(rows[1][0].includes('ledger unreachable'))
+      assert.ok(rows[0][5].includes('none'))
+    })
+
+    test('green ledger: matched pills, nothing to find; no NOTIFY means no send button', async () => {
+      const p2 = { 'b.wiki/b': page('B', 'Gardening from [https://a.wiki/view/a A]: 2 hours') }
+      const r = await verifyItem({ text: 'Gardening for [https://b.wiki/view/b B]: 2 hours' }, { title: 'A', slug: 'a', site: 'a.wiki', fetchPage: async (s, slug) => p2[`${s}/${slug}`] || null })
+      assert.equal(r.status, 'ok')
+      const html = renderReport({ result: r, groups: findCandidates(r, sitemaps), verified: { at: 0, by: 'a.wiki' } })
+      assert.ok(html.includes('timebank-badge ok" style="margin-left:0">Verified<'))
+      assert.ok(html.includes('timebank-badge ok" style="margin-left:0">matched<'))
+      assert.ok(html.includes('no ledger to find'))
+      assert.ok(html.includes('no <code>NOTIFY:</code> line'))
+      assert.ok(!html.includes('data-timebank-action'))
+    })
+
+    test('a note from the last action appears under the status line', async () => {
+      const r = await verifyItem({ text: bobText }, ctx)
+      const html = renderReport({ result: r, note: 'Fixed: 1 entry line now names x' })
+      assert.ok(html.includes('<b>Fixed: 1 entry line now names x</b>'))
+    })
+
+    test('formatStamp is UTC and fixed-format', () => {
+      assert.equal(formatStamp(Date.UTC(2026, 0, 2, 3, 4)), '2 Jan 2026, 03:04 UTC')
+    })
+  })
+})
+
+describe('timebank 0.3.0 known sites', () => {
+  const { sitesMentioned } = timebank
+  test('sites named by external links anywhere on the page, minus my own, once each', () => {
+    const page = { story: [
+      { type: 'markdown', text: 'See [http://david.localhost:4242/view/davids-ledger David] and [https://alice.wiki/a A] and [https://alice.wiki/b B].' },
+      { type: 'timebank', text: 'Soup for [//carol.wiki/view/carol Carol]: 1h\nOwn [http://demo.localhost:4242/view/x X]' },
+      { type: 'image', url: 'https://ignored.example/x.png' }
+    ] }
+    assert.deepEqual(sitesMentioned(page, 'demo.localhost:4242'), ['david.localhost:4242', 'alice.wiki', 'carol.wiki'])
+  })
+})
+
+describe('timebank 0.4.0 Time Transaction pages', () => {
+  const {
+    parseTransaction, pageTransactions, parseMinutes, minutesText, entryLineFor, pullEntries, freezeText,
+    signOffState, forkComments, suggestTitle, transactionCandidates, txnRefOf, signOffs, verifyItem, matchLedgers,
+    resolveLike, internalAnchor, renderReport, findCandidates, extractCommands, isCommand, parseEntries
+  } = timebank
+
+  const ALICE = 'http://demo.localhost:4242/view/alices-ledger'
+  const DAVID = 'http://david.localhost:4242/view/davids-ledger'
+  const TXN = 'http://demo.localhost:4242/view/repairs-for-david-3-september'
+  const txnText = [
+    `GIVER: [[Alice's Ledger]]`,
+    `RECEIVER: [${DAVID} David's Ledger]`,
+    'HOURS: 1 hour',
+    'DATE: 3 September 2026',
+    'WHAT: Repairs',
+    'SOURCE: audio note',
+    'Fixed the shed door and re-hung the gate.'
+  ].join('\n')
+  const txnPage = { title: 'Repairs for David, 3 September', story: [{ type: 'markdown', id: 'm1', text: 'intro' }, { type: 'transaction', id: 't1', text: txnText }] }
+  const alice = { site: 'demo.localhost:4242', slug: 'alices-ledger' }
+  const david = { site: 'david.localhost:4242', slug: 'davids-ledger' }
+
+  describe('the transaction item', () => {
+    test('facts: giver on the page site, receiver by external link, minutes, date, label, source, note', () => {
+      const f = parseTransaction(txnText, { site: 'demo.localhost:4242', slug: 'repairs-for-david-3-september', title: 'Repairs for David, 3 September', itemId: 't1' })
+      assert.equal(f.valid, true)
+      assert.deepEqual(f.giver, { name: "Alice's Ledger", slug: 'alices-ledger', site: 'demo.localhost:4242', external: false })
+      assert.equal(f.receiver.site, 'david.localhost:4242')
+      assert.equal(f.receiver.slug, 'davids-ledger')
+      assert.equal(f.receiver.external, true)
+      assert.equal(f.minutes, 60)
+      assert.equal(f.time, 1)
+      assert.equal(new Date(f.date).getUTCDate(), 3)
+      assert.equal(f.label, 'Repairs')
+      assert.equal(f.source, 'audio note')
+      assert.equal(f.note, 'Fixed the shed door and re-hung the gate.')
+      assert.deepEqual(f.page, { site: 'demo.localhost:4242', slug: 'repairs-for-david-3-september', title: 'Repairs for David, 3 September', itemId: 't1' })
+    })
+
+    test('missing parties or hours make it invalid; the label defaults to the page title', () => {
+      const f = parseTransaction('HOURS: 2\nGIVER: [[A]]', { site: 'x.wiki', title: 'Soup Night' })
+      assert.equal(f.valid, false)
+      assert.equal(f.label, 'Soup Night')
+      assert.equal(f.page.slug, 'soup-night')
+    })
+
+    test('hours in every ledger spelling', () => {
+      assert.equal(parseMinutes('2'), 120)
+      assert.equal(parseMinutes('1.5h'), 90)
+      assert.equal(parseMinutes('90 minutes'), 90)
+      assert.equal(parseMinutes('30 mins'), 30)
+      assert.equal(parseMinutes('two'), null)
+      assert.equal(minutesText(60), '1 hour')
+      assert.equal(minutesText(120), '2 hours')
+      assert.equal(minutesText(90), '90 minutes')
+    })
+
+    test('pageTransactions reads every transaction item on a page', () => {
+      const [f] = pageTransactions(txnPage, 'demo.localhost:4242')
+      assert.equal(f.page.slug, 'repairs-for-david-3-september')
+      assert.equal(f.page.itemId, 't1')
+    })
+  })
+
+  describe('label links to the transaction page', () => {
+    test('a [[wikilink]] label is the transaction page on the ledger\'s own site', () => {
+      const [e] = parseEntries(`[[Repairs for David, 3 September]] for [${DAVID} David's Ledger]: 1 hour`)
+      assert.equal(e.linked, true)
+      assert.equal(e.direction, 'gave')
+      assert.equal(e.label, 'Repairs for David, 3 September')
+      assert.deepEqual(e.txn, { title: 'Repairs for David, 3 September', slug: 'repairs-for-david-3-september', external: false })
+      assert.equal(e.counterparty.site, 'david.localhost:4242')
+    })
+
+    test('an external-link label names a transaction page on another site', () => {
+      const [e] = parseEntries(`[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`)
+      assert.equal(e.direction, 'received')
+      assert.equal(e.txn.site, 'demo.localhost:4242')
+      assert.equal(e.txn.slug, 'repairs-for-david-3-september')
+      assert.equal(e.txn.external, true)
+      assert.equal(e.counterparty.slug, 'alices-ledger')
+    })
+
+    test('a plain label or a label with more than a link has no transaction page', () => {
+      assert.equal(parseEntries(`Repairs for [${ALICE} A]: 1h`)[0].txn, null)
+      assert.equal(parseEntries(`Repairs, see [[X]] for [${ALICE} A]: 1h`)[0].txn, null)
+      assert.equal(txnRefOf('[[Soup]]').slug, 'soup')
+    })
+
+    test('LINEUP and TOOL are commands, never entries or caption', () => {
+      assert.ok(isCommand('LINEUP'))
+      assert.ok(isCommand('tool'))
+      assert.ok(!isCommand('Lineup of dancers.'))
+      const c = extractCommands('LINEUP\nGardening: 1h')
+      assert.equal(c.lineup, true)
+      assert.equal(c.tool, false)
+      assert.equal(parseEntries('LINEUP\nTOOL\nGardening: 1h').length, 1)
+    })
+  })
+
+  describe('shared transaction page is the strongest match', () => {
+    const aliceLines = `[[Repairs for David, 3 September]] for [${DAVID} David's Ledger]: 1 hour`
+    const davidLines = `[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`
+    const pages = {
+      'demo.localhost:4242/alices-ledger': { title: "Alice's Ledger", story: [{ type: 'timebank', id: 'a', text: 'START: 1 September 2026\nEND: 7 September 2026\n' + aliceLines }] },
+      'david.localhost:4242/davids-ledger': { title: "David's Ledger", story: [{ type: 'timebank', id: 'd', text: davidLines }] },
+      'demo.localhost:4242/repairs-for-david-3-september': txnPage
+    }
+    const fetchPage = async (site, slug) => pages[`${site}/${slug}`] || null
+
+    test('both ledgers link one page: matched by page, from both sides', async () => {
+      const a = await verifyItem({ text: aliceLines }, { title: "Alice's Ledger", slug: 'alices-ledger', site: 'demo.localhost:4242', fetchPage })
+      assert.equal(a.status, 'ok')
+      assert.equal(a.counterparties[0].matched[0].matchedBy, 'page')
+      const d = await verifyItem({ text: davidLines }, { title: "David's Ledger", slug: 'davids-ledger', site: 'david.localhost:4242', fetchPage })
+      assert.equal(d.status, 'ok')
+      assert.equal(d.counterparties[0].matched[0].matchedBy, 'page')
+    })
+
+    test('the page match needs no agreement on label or hours; label matching stays the fallback', () => {
+      const mine = parseEntries(`[${TXN} Shed door] from [${ALICE} Alice's Ledger]: 90 minutes`).map(e => e)
+      const theirs = parseEntries(`[[Repairs for David, 3 September]] for [${DAVID} David's Ledger]: 1 hour`)
+        .map(e => ({ ...e, counterparty: { ...e.counterparty }, txn: { ...e.txn, site: 'demo.localhost:4242' }, period: null }))
+      const m = matchLedgers(mine, theirs, { slug: 'davids-ledger', site: 'david.localhost:4242' })
+      assert.equal(m.matched.length, 1)
+      assert.equal(m.matched[0].by, 'page')
+      const plain = matchLedgers(parseEntries(`Repairs from [${ALICE} A]: 1 hour`), theirs.map(f => ({ ...f, label: 'Repairs', txn: null })), { slug: 'davids-ledger', site: 'david.localhost:4242' })
+      assert.equal(plain.matched[0].by, 'label')
+    })
+
+    test('two different pages never match by label', () => {
+      const mine = parseEntries(`[http://demo.localhost:4242/view/other-page Repairs] from [${ALICE} A]: 1 hour`)
+      const theirs = parseEntries(`[[Repairs]] for [${DAVID} D]: 1 hour`).map(e => ({ ...e, txn: { ...e.txn, site: 'demo.localhost:4242' }, period: null }))
+      assert.equal(matchLedgers(mine, theirs, { slug: 'davids-ledger', site: 'david.localhost:4242' }).matched.length, 0)
+    })
+
+    test('a matched pair with no page is valid: ok, and no sign-off rows', async () => {
+      const p = { 'b.wiki/b': { title: 'B', story: [{ type: 'timebank', text: 'Soup from [https://a.wiki/view/a A]: 1h' }] } }
+      const r = await verifyItem({ text: 'Soup for [https://b.wiki/view/b B]: 1h' }, { title: 'A', slug: 'a', site: 'a.wiki', fetchPage: async (s, slug) => p[`${s}/${slug}`] || null })
+      assert.equal(r.status, 'ok')
+      assert.deepEqual(await signOffs(r, { fetchPage: async () => null }), [])
+    })
+  })
+
+  describe('thaw: the lineup gather', () => {
+    const facts = pageTransactions(txnPage, 'demo.localhost:4242')
+
+    test('the line a transaction implies, from each side', () => {
+      assert.equal(entryLineFor(facts[0], alice), `[[Repairs for David, 3 September]] for [${DAVID} David's Ledger]: 1 hour`)
+      assert.equal(entryLineFor(facts[0], david), `[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`)
+      assert.equal(entryLineFor(facts[0], { site: 'demo.localhost:4242', slug: 'bobs-ledger' }), null)
+    })
+
+    test('pulled entries for a ledger that has not written the line', () => {
+      const { pulled, frozen, stale } = pullEntries([...facts, ...facts], david, parseEntries('START: 1 September 2026'))
+      assert.equal(pulled.length, 1, 'the same item gathered twice counts once')
+      assert.equal(pulled[0].pulled, true)
+      assert.equal(pulled[0].direction, 'received')
+      assert.equal(pulled[0].txn.site, 'demo.localhost:4242')
+      assert.deepEqual([frozen.length, stale.length], [0, 0])
+    })
+
+    test('a written line linking the same page is frozen, not shown twice; a differing one is stale', () => {
+      const written = parseEntries(`[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`)
+      const a = pullEntries(facts, david, written)
+      assert.deepEqual([a.pulled.length, a.frozen.length, a.stale.length], [0, 1, 0])
+      const old = parseEntries(`[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 2 hours`)
+      const b = pullEntries(facts, david, old)
+      assert.deepEqual([b.pulled.length, b.frozen.length, b.stale.length], [0, 0, 1])
+    })
+
+    test('the pulled entry verifies against the giver\'s ledger by page', async () => {
+      const { pulled } = pullEntries(facts, david, [])
+      const aliceLedger = { title: "Alice's Ledger", story: [{ type: 'timebank', text: `[[Repairs for David, 3 September]] for [${DAVID} David's Ledger]: 1 hour` }] }
+      const r = await verifyItem({ text: 'LINEUP' }, { title: "David's Ledger", slug: 'davids-ledger', site: 'david.localhost:4242', pulled, fetchPage: async (s, slug) => slug === 'alices-ledger' ? aliceLedger : null })
+      assert.equal(r.status, 'ok')
+      assert.equal(r.lineup, true)
+      assert.equal(r.pulled, 1)
+      assert.equal(r.counterparties[0].matched[0].pulled, true)
+    })
+  })
+
+  describe('freeze', () => {
+    const facts = pageTransactions(txnPage, 'demo.localhost:4242')
+    test('writes pulled lines after the last entry, keeps LINEUP and the caption', () => {
+      const text = 'START: 1 September 2026\nLINEUP\nSoup for [[Bob]]: 1h\nDavid\'s week.'
+      const { pulled } = pullEntries(facts, david, parseEntries(text))
+      const out = freezeText(text, pulled, [])
+      assert.deepEqual(out.split('\n'), ['START: 1 September 2026', 'LINEUP', 'Soup for [[Bob]]: 1h', pulled[0].raw, "David's week."])
+      assert.equal(pullEntries(facts, david, parseEntries(out)).pulled.length, 0, 'thawing again adds nothing twice')
+      assert.equal(freezeText(out, pulled, []), out, 'freezing twice is a no-op')
+    })
+
+    test('with no entries yet the line goes after the commands', () => {
+      const { pulled } = pullEntries(facts, david, [])
+      assert.deepEqual(freezeText('LINEUP\nA caption sentence here.', pulled, []).split('\n'), ['LINEUP', pulled[0].raw, 'A caption sentence here.'])
+    })
+
+    test('a stale line is replaced by the page\'s current facts', () => {
+      const text = `LINEUP\n[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 2 hours`
+      const { stale } = pullEntries(facts, david, parseEntries(text))
+      assert.equal(freezeText(text, [], stale), `LINEUP\n[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`)
+    })
+  })
+
+  describe('sign-off', () => {
+    test('giver side: accepted when the receiver\'s ledger holds the line, dialogue when they forked, else awaiting', () => {
+      assert.equal(signOffState({ direction: 'gave', matched: true }), 'accepted')
+      assert.equal(signOffState({ direction: 'gave', matched: false, fork: true }), 'dialogue')
+      assert.equal(signOffState({ direction: 'gave', matched: false }), 'awaiting')
+    })
+
+    test('receiver side: a written line is the sign-off; a pulled one awaits freeze', () => {
+      assert.equal(signOffState({ direction: 'received', pulled: false }), 'accepted')
+      assert.equal(signOffState({ direction: 'received', pulled: true }), 'awaiting')
+      assert.equal(signOffState({ direction: 'received', pulled: true, fork: true }), 'dialogue')
+    })
+
+    test('fork comments are the items the original does not have', () => {
+      const fork = { story: [...txnPage.story, { type: 'markdown', id: 'q1', text: 'Was it one hour or two?' }] }
+      assert.equal(forkComments(txnPage, fork), 1)
+      assert.equal(forkComments(txnPage, null), 0)
+    })
+
+    test('signOffs: awaiting until David writes the line, in dialogue once he forks the page', async () => {
+      const aliceText = `[[Repairs for David, 3 September]] for [${DAVID} David's Ledger]: 1 hour`
+      const pages = { 'demo.localhost:4242/repairs-for-david-3-september': txnPage, 'david.localhost:4242/davids-ledger': { title: "David's Ledger", story: [] } }
+      const fetchPage = async (s, slug) => pages[`${s}/${slug}`] || null
+      const ctx = { title: "Alice's Ledger", slug: 'alices-ledger', site: 'demo.localhost:4242', fetchPage }
+      let r = await verifyItem({ text: aliceText }, ctx)
+      let [s] = await signOffs(r, ctx)
+      assert.equal(s.state, 'awaiting')
+      assert.equal(s.reachable, true)
+      pages['david.localhost:4242/repairs-for-david-3-september'] = { story: [...txnPage.story, { type: 'markdown', id: 'q1', text: 'A query' }] }
+      r = await verifyItem({ text: aliceText }, ctx)
+      ;[s] = await signOffs(r, ctx)
+      assert.equal(s.state, 'dialogue')
+      assert.equal(s.forkSite, 'david.localhost:4242')
+      assert.equal(s.comments, 1)
+      pages['david.localhost:4242/davids-ledger'] = { title: "David's Ledger", story: [{ type: 'timebank', text: `[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour` }] }
+      r = await verifyItem({ text: aliceText }, ctx)
+      ;[s] = await signOffs(r, ctx)
+      assert.equal(s.state, 'accepted')
+    })
+  })
+
+  describe('the report for Phase 7', () => {
+    const pages = { 'demo.localhost:4242/repairs-for-david-3-september': txnPage }
+    const fetchPage = async (s, slug) => pages[`${s}/${slug}`] || null
+
+    test('transaction pages, sign-off pills, a freeze button and create-from-template offers', async () => {
+      const facts = pageTransactions(txnPage, 'demo.localhost:4242')
+      const text = `LINEUP\nSoup for [${ALICE} Alice's Ledger]: 1 hour`
+      const pull = pullEntries(facts, david, parseEntries(text))
+      const ctx = { title: "David's Ledger", slug: 'davids-ledger', site: 'david.localhost:4242', fetchPage, pulled: pull.pulled }
+      const r = await verifyItem({ text }, ctx)
+      const html = renderReport({ result: r, signoffs: await signOffs(r, ctx), groups: findCandidates(r, {}), freeze: pull, context: ['david.localhost:4242'] })
+      assert.ok(html.includes('data-page-name="repairs-for-david-3-september"'))
+      assert.ok(html.includes('title="demo.localhost:4242 =&gt; david.localhost:4242"') || html.includes('title="demo.localhost:4242 => david.localhost:4242"'))
+      assert.ok(html.includes('timebank-badge partial" style="margin-left:0">awaiting sign-off<'))
+      assert.ok(html.includes('<button data-timebank-action="freeze">Freeze 1 entry into the ledger</button>'))
+      assert.ok(html.includes('timebank-badge pending" style="margin-left:0">pulled<'))
+      assert.ok(html.includes('data-page-name="soup-for-alices-ledger"'), 'an entry with no page is offered a new page')
+      assert.ok(html.includes('create from Time Transaction Template'))
+    })
+
+    test('suggested titles and sitemap candidates', () => {
+      const [e] = parseEntries(`Gardening for [${ALICE} Alice's Ledger]: 2 hours`)
+      assert.equal(suggestTitle(e), "Gardening for Alice's Ledger")
+      const map = [
+        { slug: 'repairs-for-david-3-september', links: { 'time-transaction': 'x', 'alices-ledger': 'y' } },
+        { slug: 'time-transaction-template', links: { 'time-transaction': 'x' } },
+        { slug: 'welcome-visitors', links: {} },
+        { slug: 'no-links' }
+      ]
+      assert.deepEqual(transactionCandidates(map).map(p => p.slug), ['repairs-for-david-3-september'])
+      assert.deepEqual(transactionCandidates(null), [])
+    })
+  })
+
+  describe('links drawn after emit', () => {
+    test('resolveLike writes what wiki.resolveLinks writes, with an explicit search path', () => {
+      const html = resolveLike(`[[Repairs for David]] for [${DAVID} David's Ledger]: 1 hour <b>`, ['demo.localhost:4242', 'view'])
+      assert.ok(html.startsWith('<a class="internal" href="/repairs-for-david.html" data-page-name="repairs-for-david" title="demo.localhost:4242 =&gt; view">Repairs for David</a>'))
+      assert.ok(html.includes(`<a class="external" target="_blank" href="${DAVID}" title="${DAVID}" rel="noopener">David&#39;s Ledger <img src="/images/external-link-ltr-icon.png"></a>`) || html.includes("David's Ledger <img"))
+      assert.ok(html.endsWith('1 hour &lt;b&gt;'))
+    })
+
+    test('an internal anchor for a page on another site searches that site first', () => {
+      assert.ok(internalAnchor('X', ['a.wiki', 'b.wiki'], 'b.wiki').includes('title="b.wiki =&gt; a.wiki"'))
+    })
+  })
+})
+
+describe('timebank 0.4.0 forks of a transaction page', () => {
+  const { pageTransactions, pullEntries, signOffs, verifyItem, forkedFrom } = timebank
+  const DAVID = 'http://david.localhost:4242/view/davids-ledger'
+  const ALICE = 'http://demo.localhost:4242/view/alices-ledger'
+  const soup = {
+    title: 'Soup for Alice, 5 September',
+    story: [{ type: 'transaction', id: 's1', text: `GIVER: [${DAVID} David's Ledger]\nRECEIVER: [${ALICE} Alice's Ledger]\nHOURS: 1 hour\nWHAT: Soup` }],
+    journal: [{ type: 'create' }]
+  }
+  const fork = { ...soup, story: [...soup.story, { type: 'markdown', id: 'q', text: 'Was it longer?' }], journal: [{ type: 'create' }, { type: 'fork', site: 'david.localhost:4242' }] }
+  const alice = { site: 'demo.localhost:4242', slug: 'alices-ledger' }
+
+  test('the original in the lineup and the fork on the own site are one transaction', () => {
+    const facts = [...pageTransactions(soup, 'david.localhost:4242'), ...pageTransactions(fork, 'demo.localhost:4242')]
+    const { pulled } = pullEntries(facts, alice, [])
+    assert.equal(pulled.length, 1)
+    assert.equal(pulled[0].txn.site, 'david.localhost:4242', 'the first gathered, the lineup copy, wins')
+  })
+
+  test('forkedFrom reads the journal', () => {
+    assert.equal(forkedFrom(fork, 'demo.localhost:4242'), 'david.localhost:4242')
+    assert.equal(forkedFrom(soup, 'david.localhost:4242'), null)
+  })
+
+  test('a pulled entry from the receiver\'s own fork is in dialogue, counting her comments', async () => {
+    const { pulled } = pullEntries(pageTransactions(fork, 'demo.localhost:4242'), alice, [])
+    const pages = { 'demo.localhost:4242/soup-for-alice-5-september': fork, 'david.localhost:4242/soup-for-alice-5-september': soup }
+    const ctx = { title: "Alice's Ledger", slug: 'alices-ledger', site: 'demo.localhost:4242', pulled, fetchPage: async (s, slug) => pages[`${s}/${slug}`] || null }
+    const r = await verifyItem({ text: 'LINEUP' }, ctx)
+    const [s] = await signOffs(r, ctx)
+    assert.equal(s.state, 'dialogue')
+    assert.equal(s.comments, 1)
+  })
+})
+
+test('a line written against the original page freezes the fork gathered on the own site too', () => {
+  const { pageTransactions, pullEntries, parseEntries } = timebank
+  const soup = { title: 'Soup for Alice, 5 September', story: [{ type: 'transaction', id: 's1', text: 'GIVER: [http://david.localhost:4242/view/davids-ledger D]\nRECEIVER: [http://demo.localhost:4242/view/alices-ledger A]\nHOURS: 1 hour' }] }
+  const written = parseEntries('[http://david.localhost:4242/view/soup-for-alice-5-september Soup for Alice, 5 September] from [http://david.localhost:4242/view/davids-ledger D]: 1 hour')
+  const r = pullEntries(pageTransactions(soup, 'demo.localhost:4242'), { site: 'demo.localhost:4242', slug: 'alices-ledger' }, written)
+  assert.deepEqual([r.pulled.length, r.frozen.length], [0, 1])
+})

@@ -1,0 +1,16 @@
+{
+  "name": "wiki-plugin-transaction",
+  "version": "0.4.0",
+  "description": "Federated Wiki plugin — the transaction item of a Time Transaction page; its code ships in wiki-plugin-timebank",
+  "keywords": ["wiki", "federated wiki", "plugin", "timebank", "transaction"],
+  "author": { "name": "David Bovill", "url": "https://github.com/opn" },
+  "license": "MIT",
+  "type": "module",
+  "files": ["client", "pages", "factory.json"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank.git",
+    "directory": "transaction"
+  },
+  "engines": { "node": ">=18.x" }
+}

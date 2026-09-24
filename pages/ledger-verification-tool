@@ -1,0 +1,117 @@
+{
+  "title": "Ledger Verification Tool",
+  "story": [
+    {
+      "type": "paragraph",
+      "id": "e320e0c8d4ed9e2a",
+      "text": "Check the timebank ledger on the page beside this one. Click the Verified badge on any ledger and this page opens to its right: every linked entry and its result, each transaction page and its sign-off, a verification message to send, pulled entries to freeze, and missing ledgers to find and fix."
+    },
+    {
+      "type": "timebank",
+      "id": "734b337573946e5f",
+      "text": "TOOL"
+    },
+    {
+      "type": "markdown",
+      "id": "505076fb7dd48151",
+      "text": "# How it finds the ledger\nThe page immediately to its left"
+    },
+    {
+      "type": "markdown",
+      "id": "6bd564bfe46a2630",
+      "text": "A wiki link cannot carry a parameter, so the badge only opens this page beside its ledger. The timebank item above runs in TOOL mode: it reads the page to its left in the lineup, takes the ledger whose badge was clicked (or the first with linked entries), checks it and draws the report. Opened on its own, from the \u2630 menu, it says so and waits for a ledger."
+    },
+    {
+      "type": "markdown",
+      "id": "309aa2eaf54ee745",
+      "text": "# The report\nResult first, coloured like the badge"
+    },
+    {
+      "type": "markdown",
+      "id": "0c0395dcd2c60bf8",
+      "text": "Entries: every linked entry \u2014 Result (green matched, red unmatched or ledger unreachable), direction, hours, label, counterparty ledger and transaction page. An entry that links the same Time Transaction page as its counterparty's matches by page, before any comparison of label and hours. Pulled entries carry a grey pulled pill."
+    },
+    {
+      "type": "markdown",
+      "id": "acefb70676eac1c4",
+      "text": "Transactions: each transaction page and its sign-off \u2014 accepted when the receiver's ledger holds the line, in dialogue when the receiver has forked the page to comment or query, awaiting sign-off otherwise. A matched pair of lines with no page behind it is valid as it stands."
+    },
+    {
+      "type": "markdown",
+      "id": "c090fbf189bf5e0d",
+      "text": "Freeze: on a ledger with a LINEUP line, writes the entries pulled from transaction pages into the ledger's own text, so it stands alone. Send: posts one verification message per counterparty to the ledger's NOTIFY topic. Find missing ledgers: candidates for every counterparty that did not match, each with a Fix button, and entries with no transaction page, offered as new pages to create from the Time Transaction Template."
+    },
+    {
+      "type": "markdown",
+      "id": "bae512b44ffe2939",
+      "text": "Freeze and Fix save the ledger through the wiki's page handler, so they need the browser to be logged in as the owner of the ledger's site; they say so when it is not. Nothing on this page is stored: reload it, or click the badge again, to re-check."
+    },
+    {
+      "type": "markdown",
+      "id": "bb3597c2af0ba173",
+      "text": "# See\n\n- [[About Timebank Plugin]] \u2014 the ledger grammar, the badge and LINEUP\n- [[About Transaction Plugin]] \u2014 the transaction item of a Time Transaction page\n- [[Time Transaction Template]] \u2014 the shape of a transaction page, where a site has one"
+    }
+  ],
+  "journal": [
+    {
+      "type": "create",
+      "item": {
+        "title": "Ledger Verification Tool",
+        "story": [
+          {
+            "type": "paragraph",
+            "id": "e320e0c8d4ed9e2a",
+            "text": "Check the timebank ledger on the page beside this one. Click the Verified badge on any ledger and this page opens to its right: every linked entry and its result, each transaction page and its sign-off, a verification message to send, pulled entries to freeze, and missing ledgers to find and fix."
+          },
+          {
+            "type": "timebank",
+            "id": "734b337573946e5f",
+            "text": "TOOL"
+          },
+          {
+            "type": "markdown",
+            "id": "505076fb7dd48151",
+            "text": "# How it finds the ledger\nThe page immediately to its left"
+          },
+          {
+            "type": "markdown",
+            "id": "6bd564bfe46a2630",
+            "text": "A wiki link cannot carry a parameter, so the badge only opens this page beside its ledger. The timebank item above runs in TOOL mode: it reads the page to its left in the lineup, takes the ledger whose badge was clicked (or the first with linked entries), checks it and draws the report. Opened on its own, from the \u2630 menu, it says so and waits for a ledger."
+          },
+          {
+            "type": "markdown",
+            "id": "309aa2eaf54ee745",
+            "text": "# The report\nResult first, coloured like the badge"
+          },
+          {
+            "type": "markdown",
+            "id": "0c0395dcd2c60bf8",
+            "text": "Entries: every linked entry \u2014 Result (green matched, red unmatched or ledger unreachable), direction, hours, label, counterparty ledger and transaction page. An entry that links the same Time Transaction page as its counterparty's matches by page, before any comparison of label and hours. Pulled entries carry a grey pulled pill."
+          },
+          {
+            "type": "markdown",
+            "id": "acefb70676eac1c4",
+            "text": "Transactions: each transaction page and its sign-off \u2014 accepted when the receiver's ledger holds the line, in dialogue when the receiver has forked the page to comment or query, awaiting sign-off otherwise. A matched pair of lines with no page behind it is valid as it stands."
+          },
+          {
+            "type": "markdown",
+            "id": "c090fbf189bf5e0d",
+            "text": "Freeze: on a ledger with a LINEUP line, writes the entries pulled from transaction pages into the ledger's own text, so it stands alone. Send: posts one verification message per counterparty to the ledger's NOTIFY topic. Find missing ledgers: candidates for every counterparty that did not match, each with a Fix button, and entries with no transaction page, offered as new pages to create from the Time Transaction Template."
+          },
+          {
+            "type": "markdown",
+            "id": "bae512b44ffe2939",
+            "text": "Freeze and Fix save the ledger through the wiki's page handler, so they need the browser to be logged in as the owner of the ledger's site; they say so when it is not. Nothing on this page is stored: reload it, or click the badge again, to re-check."
+          },
+          {
+            "type": "markdown",
+            "id": "bb3597c2af0ba173",
+            "text": "# See\n\n- [[About Timebank Plugin]] \u2014 the ledger grammar, the badge and LINEUP\n- [[About Transaction Plugin]] \u2014 the transaction item of a Time Transaction page\n- [[Time Transaction Template]] \u2014 the shape of a transaction page, where a site has one"
+          }
+        ]
+      },
+      "date": 1790173397798,
+      "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 Phase 7 of the Timebank Verification Plan: the tool is a plugin page, served on every site, not a ghost."
+    }
+  ]
+}
