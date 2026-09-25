@@ -5,7 +5,7 @@
 // (timebank.js) finds the ledger to the tool's left, runs the checks and
 // wires the buttons; nothing here touches the DOM.
 
-import { asSlug, normLabel, normSite, sameSite, ledgerUrl, formatHours, escape, escapeAttr, parseLedgerUrl } from './parse.js'
+import { asSlug, normLabel, normSite, sameSite, ledgerUrl, formatHours, formatDay, escape, escapeAttr, parseLedgerUrl } from './parse.js'
 import { internalAnchor, externalAnchor, refAnchor, resolveLike } from './links.js'
 import { SIGNOFF_TEXT, suggestTitle, TEMPLATE_TITLE, awaitingMinutes } from './txn.js'
 
@@ -117,6 +117,14 @@ const para = html => `<p style="margin:6px 0">${html}</p>`
 // so it opens in the lineup from the site that holds it.
 const txnAnchor = (txn, context) => internalAnchor(txn.title || txn.slug, context, txn.site)
 
+// The occasion of a page an entry stands for: its day, and "n of m" when the
+// page records recurring work.
+export const occasionText = e => {
+  const date = e.date ?? (e.facts ? e.facts.date : null)
+  const occ = e.facts && e.facts.occasion && e.facts.occasion.of > 1 ? `, ${e.facts.occasion.n} of ${e.facts.occasion.of}` : ''
+  return date === null || date === undefined ? '' : ` <span style="color:#888">${escape(formatDay(date))}${escape(occ)}</span>`
+}
+
 const outcomeOf = (cp, ok) => ok ? 'matched' : (cp.reachable ? 'unmatched' : 'unreachable')
 
 // Every linked entry, Result first.
@@ -134,7 +142,7 @@ export const entryRows = (result, context = []) => {
         escape(formatHours(e.time) || '0h'),
         escape(e.label) + (e.pulled ? ' ' + pill('pending', 'pulled') : ''),
         `${refAnchor({ ...cp, external: true }, result.site, context, ledgerUrl)} <span style="color:#888">${escape(cp.site)}</span>`,
-        e.txn ? txnAnchor(e.txn.site ? e.txn : { ...e.txn, site: result.site }, context) : '<span style="color:#999">none</span>'
+        e.txn ? txnAnchor(e.txn.site ? e.txn : { ...e.txn, site: result.site }, context) + occasionText(e) : '<span style="color:#999">none</span>'
       ])
     }
   }
@@ -198,7 +206,7 @@ export const renderReport = model => {
   const at = (model.verified && model.verified.at) || Date.now()
   const by = (model.verified && model.verified.by) || result.site
   const out = []
-  const ledger = externalAnchor(ledgerUrl({ site: result.site, slug: result.slug }), linkText(result.title))
+  const ledger = externalAnchor(ledgerUrl({ site: result.site, slug: result.pageSlug || result.slug }), linkText(result.title))
   const status = { ok: ['ok', 'Verified'], partial: ['partial', 'Partly verified'], fail: ['fail', 'Not verified'], none: ['pending', 'No linked entries'] }[result.status] || ['pending', result.status]
   const unreachable = result.unreachable.length
     ? `; ${plural(result.unreachable.length, 'counterparty ledger', 'counterparty ledgers')} could not be reached`

@@ -15,9 +15,19 @@
 //   [[Repairs for David, 3 September]] for [[Alice Ledger]]: 1 hour
 //                                         — the label may itself be a link to the entry's
 //                                           Time Transaction page ([[wikilink]] or [href Title])
+//   2026-09-10 [[Childcare for David]] for [http://… David's Ledger]: 4 hours
+//                                         — an ISO date first names the occasion: a page that
+//                                           records recurring work holds one transaction item
+//                                           per occasion, and the date picks the item (0.6.0)
 //   LINEUP                                — pull entries from Time Transaction pages beside
 //                                           the ledger and on its own site (thaw)
 //   TOOL                                  — this item is the Ledger Verification Tool's report
+//   OWNER: [[About Alice]]                — whose ledger this is: the owner's About page (0.6.0)
+//   PERIODS | PERIODS: 10                 — a summary ledger: its period pages are the pages
+//                                           titled "<this title> YYYY-MM"; shows the 10 most
+//                                           recent transactions and the net balance (0.6.0)
+//   INDEX                                 — this item is the Transactions Index (0.6.0)
+//   BALANCE | BALANCE: [[Alice's Ledger]] — the owner's balance, on their About page (0.6.0)
 //   Admin tasks                           — note entry (no time, shown in table)
 //   Any prose sentence.                   — caption text (shown below table)
 
@@ -86,7 +96,9 @@ export const normLabel = label => String(label || '')
 
 // --- Line classification ---
 
-export const COMMANDS = /^(?:(?:START|END|NOTIFY|WATCH)\s*:|(?:LINEUP|TOOL)\s*$)/i
+export const COMMANDS = /^(?:(?:START|END|NOTIFY|WATCH|OWNER)\s*:|PERIODS(?:\s*:\s*\d+)?\s*$|BALANCE(?:\s*:\s*\[.*\])?\s*$|(?:LINEUP|TOOL|INDEX)\s*$)/i
+// An ISO date at the start of an entry line: the day of the occasion.
+const DATE_PREFIX = /^(\d{4}-\d{2}-\d{2})\s+(.*)$/
 const TIME_SUFFIX = /:\s*([\d.]+)\s*(hours?|hrs?|h|minutes?|mins?|m)\s*$/i
 // A counterparty is a [[wikilink]] (a ledger on this page's own site) or an
 // external link [http://site/view/slug Name] (a ledger on any site).
@@ -184,13 +196,25 @@ export const parseWatch = value => String(value || '')
   })
   .filter(Boolean)
 
-// -> { notify: url|null, lineup: bool, tool: bool, watch: [site] }
+// -> { notify: url|null, lineup: bool, tool: bool, watch: [site], owner: ref|null,
+//      periods: { recent }|null, index: bool, balance: ref|true|null }
 export const extractCommands = text => {
   let notify = null
   let lineup = false
   let tool = false
+  let owner = null
+  let periods = null
+  let index = false
+  let balance = null
   const watch = []
   lines(text).forEach(line => {
+    const o = line.match(/^OWNER\s*:\s*(.+)$/i)
+    if (o) owner = ledgerRefOf(o[1]) || owner
+    const p = line.match(/^PERIODS(?:\s*:\s*(\d+))?\s*$/i)
+    if (p) periods = { recent: p[1] ? Math.max(1, parseInt(p[1], 10)) : 10 }
+    const b = line.match(/^BALANCE(?:\s*:\s*(\[.*\]))?\s*$/i)
+    if (b) balance = (b[1] && ledgerRefOf(b[1])) || true
+    if (/^INDEX$/i.test(line)) index = true
     const m = line.match(/^NOTIFY\s*:\s*(.+)$/i)
     if (m) notify = normaliseNotify(m[1])
     const w = line.match(/^WATCH\s*:\s*(.*)$/i)
@@ -198,7 +222,7 @@ export const extractCommands = text => {
     if (/^LINEUP$/i.test(line)) lineup = true
     if (/^TOOL$/i.test(line)) tool = true
   })
-  return { notify, lineup, tool, watch }
+  return { notify, lineup, tool, watch, owner, periods, index, balance }
 }
 
 // A ledger named by a link token: [[Name]] is a ledger on `site` (the site the
@@ -253,14 +277,24 @@ export const rewriteEntries = (text, raws, link) => {
   }).join('\n')
 }
 
+// A day as an ISO date, "2026-09-10" (UTC).
+export const isoDay = ms => new Date(ms).toISOString().slice(0, 10)
+
+// Two instants on the same UTC day.
+export const sameDay = (a, b) => a !== null && a !== undefined && b !== null && b !== undefined &&
+  Math.floor(a / 86400000) === Math.floor(b / 86400000)
+
 export const parseEntries = text => lines(text)
   .filter(line => !isCommand(line) && !isProse(line))
   .map(line => {
-    const match = line.match(TIME_SUFFIX)
+    const dated = line.match(DATE_PREFIX)
+    const date = dated ? parseDate(dated[1]) : null
+    const body = dated && date !== null ? dated[2].trim() : line
+    const match = body.match(TIME_SUFFIX)
     if (match) {
       const amount = parseFloat(match[1])
       const hours = match[2].toLowerCase().startsWith('m') ? amount / 60 : amount
-      const label = line.replace(TIME_SUFFIX, '').trim()
+      const label = body.replace(TIME_SUFFIX, '').trim()
       const linked = label.match(LINKED)
       const counterparty = linked ? counterpartyOf(linked) : null
       if (counterparty) {
@@ -273,12 +307,13 @@ export const parseEntries = text => lines(text)
           linked: true,
           direction: dir === 'for' || dir === 'to' ? 'gave' : 'received',
           counterparty,
-          txn
+          txn,
+          date
         }
       }
-      return { label, time: hours, raw: line, linked: false }
+      return { label, time: hours, raw: line, linked: false, date }
     }
-    return { label: line, time: null, raw: line, linked: false }
+    return { label: body, time: null, raw: line, linked: false, date }
   })
 
 export const extractCaption = text => lines(text)

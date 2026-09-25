@@ -157,7 +157,8 @@ def ledger_ref_of(token, site=None):
 
 TIME_SUFFIX = re.compile(r":\s*([\d.]+)\s*(hours?|hrs?|h|minutes?|mins?|m)\s*$", re.I)
 LINKED = re.compile(r"^(.+?)\s+(for|to|from|by)\s+(?:\[\[([^\]]+)\]\]|\[((?:https?:)?//[^\s\]]+)\s+([^\]]+)\])$", re.I)
-COMMANDS = re.compile(r"^(?:(?:START|END|NOTIFY|WATCH)\s*:|(?:LINEUP|TOOL)\s*$)", re.I)
+COMMANDS = re.compile(r"^(?:(?:START|END|NOTIFY|WATCH|OWNER)\s*:|PERIODS(?:\s*:\s*\d+)?\s*$|BALANCE(?:\s*:\s*\[.*\])?\s*$|(?:LINEUP|TOOL|INDEX)\s*$)", re.I)
+DATE_PREFIX = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(.*)$")
 
 
 def parse_watch(value) -> list[str]:
@@ -174,10 +175,16 @@ def parse_watch(value) -> list[str]:
 
 
 def extract_commands(text) -> dict:
-    notify, lineup, watch = None, False, []
+    notify, lineup, watch, owner, periods = None, False, [], None, None
     for line in (l.strip() for l in str(text or "").split("\n")):
         if not line:
             continue
+        o = re.match(r"^OWNER\s*:\s*(.+)$", line, re.I)
+        if o:
+            owner = ledger_ref_of(o.group(1)) or owner
+        pm = re.match(r"^PERIODS(?:\s*:\s*(\d+))?\s*$", line, re.I)
+        if pm:
+            periods = {"recent": max(1, int(pm.group(1))) if pm.group(1) else 10}
         m = re.match(r"^NOTIFY\s*:\s*(.+)$", line, re.I)
         if m:
             notify = m.group(1).strip()
@@ -188,7 +195,7 @@ def extract_commands(text) -> dict:
                     watch.append(site)
         if re.match(r"^LINEUP$", line, re.I):
             lineup = True
-    return {"notify": notify, "lineup": lineup, "watch": watch}
+    return {"notify": notify, "lineup": lineup, "watch": watch, "owner": owner, "periods": periods}
 
 
 def parse_entries(text) -> list[dict]:
@@ -197,12 +204,15 @@ def parse_entries(text) -> list[dict]:
     for line in (l.strip() for l in str(text or "").split("\n")):
         if not line or COMMANDS.match(line):
             continue
-        m = TIME_SUFFIX.search(line)
+        dm = DATE_PREFIX.match(line)
+        date = parse_date(dm.group(1)) if dm else None
+        body = dm.group(2).strip() if dm and date is not None else line
+        m = TIME_SUFFIX.search(body)
         if not m:
             continue
         amount = _parse_float(m.group(1)) or 0.0
         hours = amount / 60 if m.group(2).lower().startswith("m") else amount
-        label = TIME_SUFFIX.sub("", line).strip()
+        label = TIME_SUFFIX.sub("", body).strip()
         linked = LINKED.match(label)
         cp = None
         if linked:
@@ -217,9 +227,9 @@ def parse_entries(text) -> list[dict]:
             txn = ledger_ref_of(label_text)
             d = linked.group(2).lower()
             out.append({"label": txn["name"] if txn else label_text, "time": hours, "raw": line, "linked": True,
-                        "direction": "gave" if d in ("for", "to") else "received", "counterparty": cp, "txn": txn})
+                        "direction": "gave" if d in ("for", "to") else "received", "counterparty": cp, "txn": txn, "date": date})
         else:
-            out.append({"label": label, "time": hours, "raw": line, "linked": False})
+            out.append({"label": label, "time": hours, "raw": line, "linked": False, "date": date})
     return out
 
 
@@ -287,12 +297,68 @@ def parse_transaction(text, page=None) -> dict:
 
 
 def page_transactions(page: dict, site: str, slug: str | None = None) -> list[dict]:
+    """One fact per transaction item: a page of recurring work holds one per
+    occasion, each with occasion = {n, of} — page plus item is its identity."""
     out = []
     for it in (page or {}).get("story") or []:
         if it.get("type") == "transaction":
             out.append(parse_transaction(it.get("text") or "", {"site": site, "slug": slug or as_slug(page.get("title") or ""),
                                                                 "title": page.get("title"), "itemId": it.get("id")}))
+    for i, f in enumerate(out):
+        f["occasion"] = {"n": i + 1, "of": len(out)}
     return out
+
+
+def same_day(a, b) -> bool:
+    return a is not None and b is not None and a // 86400000 == b // 86400000
+
+
+# --- periods.js ---------------------------------------------------------------
+
+def period_of_title(title):
+    """"Alice's Ledger 2026-09" -> {"base": "Alice's Ledger", "month": "2026-09"} | None"""
+    m = re.match(r"^(.*\S)\s+(\d{4})-(\d{2})$", str(title or "").strip())
+    if not m or not 1 <= int(m.group(3)) <= 12:
+        return None
+    return {"base": m.group(1), "month": f"{m.group(2)}-{m.group(3)}"}
+
+
+def month_bounds(month: str) -> tuple[int, int]:
+    y, m = (int(x) for x in month.split("-"))
+    start = _utc_ms(y, m - 1, 1)
+    end = _utc_ms(y, m, 0)
+    return start, end
+
+
+def period_pages_of(sitemap, base: str) -> list[dict]:
+    """The period pages of the summary ledger titled `base`, oldest first."""
+    want = as_slug(base or "")
+    out = []
+    for p in sitemap if isinstance(sitemap, list) else []:
+        t = period_of_title((p or {}).get("title"))
+        if t and as_slug(t["base"]) == want and p.get("slug") and not any(o["slug"] == p["slug"] for o in out):
+            out.append({"slug": p["slug"], "title": p["title"], "month": t["month"]})
+    return sorted(out, key=lambda p: p["month"])
+
+
+def is_summary(page) -> bool:
+    return any(it.get("type") == "timebank" and extract_commands(it.get("text") or "")["periods"]
+               for it in (page or {}).get("story") or [])
+
+
+def owner_name(ref) -> str | None:
+    """OWNER: [[About Alice]] -> "Alice"."""
+    if not ref:
+        return None
+    return re.sub(r"^About\s+", "", ref.get("name") or "", flags=re.I).strip() or None
+
+
+def logged_balance(entries: list[dict]) -> dict:
+    """Hours given, received and net from a ledger's written linked lines —
+    what the summary ledger (PERIODS) shows as its balance."""
+    given = sum(js_round(e["time"] * 60) for e in entries if e["linked"] and e["direction"] == "gave") / 60
+    received = sum(js_round(e["time"] * 60) for e in entries if e["linked"] and e["direction"] == "received") / 60
+    return {"given": given, "received": received, "net": given - received, "count": sum(1 for e in entries if e["linked"])}
 
 
 def transaction_candidates(sitemap) -> list[str]:
@@ -348,6 +414,18 @@ def dedupe(copies: list[dict]) -> list[dict]:
     return out
 
 
+def month_of(ms: int) -> str:
+    return (_EPOCH + _dt.timedelta(milliseconds=ms)).strftime("%Y-%m")
+
+
+def by_month(transactions: list[dict]) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for t in transactions:
+        if t["facts"].get("date") is not None:
+            out.setdefault(month_of(t["facts"]["date"]), []).append(t)
+    return dict(sorted(out.items()))
+
+
 def iso_week(ms: int) -> str:
     d = (_EPOCH + _dt.timedelta(milliseconds=ms)).date()
     y, w, _ = d.isocalendar()
@@ -391,7 +469,10 @@ def carries(ledger: dict, t: dict, side: str) -> bool:
         if e["direction"] != want or not same_ledger(e["counterparty"], other):
             continue
         if e.get("txn"):
-            if e["txn"]["slug"] == slug:
+            # a page of recurring work: a dated line holds the occasion of its
+            # day; an undated one the occasion of the same minutes
+            if e["txn"]["slug"] == slug and (same_day(e.get("date"), f.get("date")) if e.get("date") is not None
+                                             else js_round(e["time"] * 60) == f["minutes"]):
                 return True
         elif js_round(e["time"] * 60) == f["minutes"] and norm_label(e["label"]) == norm_label(f["label"]):
             return True
@@ -399,7 +480,10 @@ def carries(ledger: dict, t: dict, side: str) -> bool:
 
 
 def state_of(t: dict, ledgers: list[dict]) -> str:
+    """verified | in dialogue | awaiting | unknown party (a side has no known ledger)."""
     f = t["facts"]
+    if any(not any(same_ledger(l, f[k]) for l in ledgers) for k in ("giver", "receiver")):
+        return "unknown party"
     sides = {}
     for side, ref in (("giver", f["giver"]), ("receiver", f["receiver"])):
         led = next((l for l in ledgers if same_ledger(l, ref)), None)
@@ -434,6 +518,21 @@ def summarise(transactions: list[dict], members: list[dict]) -> dict:
         r["share"] = (r["given"] / total_given) if total_given else 0.0
     return {"rows": [rows[m["member"]] for m in members], "total": total_given,
             "count": len(transactions), "verified": sum(1 for t in transactions if t["state"] == "verified")}
+
+
+def ledger_check(ledgers: list[dict], summary: dict) -> list[dict]:
+    """Each member's logged balance (the summary ledger's net: written lines in
+    its period ledgers) beside the report's net (every transaction page naming
+    them, counted once). They differ by what is not logged yet."""
+    out = []
+    by = {r["member"]: r for r in summary["rows"]}
+    for l in ledgers:
+        r = by.get(l["member"])
+        if not r:
+            continue
+        out.append({"member": l["member"], "ledger": l["logged"]["net"], "report": r["net"],
+                    "diff": l["logged"]["net"] - r["net"], "periods": len(l.get("periods") or [])})
+    return out
 
 
 def by_week(transactions: list[dict]) -> dict[str, list[dict]]:
@@ -501,8 +600,18 @@ def pie_svg(slices: list[tuple[str, float]], title: str) -> str:
     return "\n".join(parts)
 
 
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def bar_label(key: str) -> str:
+    """"2026-W37" -> "W37"; "2026-09" -> "Sep"."""
+    if "-W" in key:
+        return key.split("-")[1]
+    return MONTH_NAMES[int(key.split("-")[1]) - 1]
+
+
 def bars_svg(weeks: list[tuple[str, list[tuple[str, float]]]], names: list[str], title: str) -> str:
-    """Stacked bars of hours given per ISO week, one colour per person."""
+    """Stacked bars of hours given per ISO week or per month, one colour per person."""
     w, h = 400, 280
     left, right, top, bottom = 44, 12, 30, 62
     plot_h = h - top - bottom
@@ -529,7 +638,7 @@ def bars_svg(weeks: list[tuple[str, list[tuple[str, float]]]], names: list[str],
             out.append(f'<rect x="{x:.1f}" y="{base:.1f}" width="{bw:.1f}" height="{bh:.1f}" fill="{PALETTE[names.index(name) % len(PALETTE)]}" stroke="#fff"/>')
         total = sum(v for _, v in parts)
         out.append(f'<text x="{x + bw / 2:.1f}" y="{base - 5:.1f}" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">{fmt_hours(total)}</text>')
-        out.append(f'<text x="{x + bw / 2:.1f}" y="{top + plot_h + 16}" text-anchor="middle" font-size="12" fill="#333">{_esc(week.split("-")[1])}</text>')
+        out.append(f'<text x="{x + bw / 2:.1f}" y="{top + plot_h + 16}" text-anchor="middle" font-size="12" fill="#333">{_esc(bar_label(week))}</text>')
     lx = left
     for j, name in enumerate(names):
         out.append(f'<rect x="{lx}" y="{h - 26}" width="14" height="14" rx="3" fill="{PALETTE[j % len(PALETTE)]}"/>')

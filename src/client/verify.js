@@ -12,13 +12,18 @@
 //   slug,                          my page slug (defaults to asSlug(title))
 //   site,                          the site my page is on
 //   fetchPage(site, slug)          -> Promise<page json | null>   (null = 404 / unreachable)
+//   fetchSitemap(site)             -> Promise<sitemap | null>     (optional: finds the period
+//                                     pages of a counterparty's summary ledger, 0.6.0)
+//   pageSlug                       the slug of the page the item is on, when `slug` is the
+//                                  ledger's identity (a period page's summary slug)
 // }
 
 import {
   parseEntries, extractDates, extractCommands, asSlug, normLabel, formatHours, formatDay,
-  normSite, sameSite, schemeFor, ledgerUrl, ledgerId
+  normSite, sameSite, schemeFor, ledgerUrl, ledgerId, sameDay
 } from './parse.js'
 import { signOffState, forkComments, receiverSite, forkedFrom } from './txn.js'
+import { periodPagesOf, monthBounds } from './periods.js'
 
 export { schemeFor }
 
@@ -41,6 +46,15 @@ export const periodOf = dates => {
 
 const overlaps = (a, b) => !a || !b || (a.start <= b.end && b.start <= a.end)
 
+const dated = e => e.date !== null && e.date !== undefined
+
+// Two lines for one occasion of a page: the same day when both are dated,
+// else the same minutes.
+const sameOccasion = (e, f) => dated(e) && dated(f) ? sameDay(e.date, f.date) : minutes(e) === minutes(f)
+
+// Two lines that cannot be one occasion: both dated, on different days.
+const otherDay = (e, f) => dated(e) && dated(f) && !sameDay(e.date, f.date)
+
 const opposite = d => (d === 'gave' ? 'received' : 'gave')
 
 // The ledger a counterparty names, given the site the entry is written on.
@@ -53,9 +67,14 @@ export const counterpartyLedger = (cp, site) => cp.external
 // and `txn.site` resolved. Each counter-entry is consumed at most once. The
 // back-pointer must name my slug and, when both sides know it, my site.
 //   1. the strongest match: both entries link the same transaction page, by
-//      site and slug — label, hours and period are not compared;
+//      site and slug, and the same occasion of it — the same day when both
+//      lines are dated, else the same minutes (a page of recurring work holds
+//      one transaction item per occasion: page plus item is the identity);
+//      then the same page on any day neither line contradicts, whatever the
+//      hours — label and period are not compared;
 //   2. the fallback: same label, same minutes, overlapping periods — unless
-//      both entries link transaction pages and the pages differ by slug.
+//      both entries link transaction pages and the pages differ by slug, or
+//      both lines are dated on different days.
 // Every matched pair says how: matchedBy 'page' | 'label'.
 //   opts = { title | slug: my page, site: my site, period: my period | null }
 export const matchLedgers = (mine, theirs, opts = {}) => {
@@ -68,11 +87,15 @@ export const matchLedgers = (mine, theirs, opts = {}) => {
   const txnOfMine = e => e.txn ? (e.txn.site || !mySite ? e.txn : { ...e.txn, site: mySite }) : null
   const candidate = (e, f) => f.linked && pointsAtMe(f) && f.direction === opposite(e.direction)
   const hits = new Map()
-  for (const e of mine) {
-    const t = txnOfMine(e)
-    if (!t) continue
-    const hit = pool.find(({ f, used }) => !used && candidate(e, f) && samePage(t, f.txn))
-    if (hit) { hit.used = true; hits.set(e, { f: hit.f, by: 'page' }) }
+  for (const strict of [true, false]) {
+    for (const e of mine) {
+      if (hits.has(e)) continue
+      const t = txnOfMine(e)
+      if (!t) continue
+      const hit = pool.find(({ f, used }) => !used && candidate(e, f) && samePage(t, f.txn) &&
+        (strict ? sameOccasion(e, f) : !otherDay(e, f)))
+      if (hit) { hit.used = true; hits.set(e, { f: hit.f, by: 'page' }) }
+    }
   }
   for (const e of mine) {
     if (hits.has(e)) continue
@@ -81,6 +104,7 @@ export const matchLedgers = (mine, theirs, opts = {}) => {
       !used &&
       candidate(e, f) &&
       !(t && f.txn && t.slug !== f.txn.slug) &&
+      !otherDay(e, f) &&
       minutes(f) === minutes(e) &&
       normLabel(f.label) === normLabel(e.label) &&
       overlaps(myPeriod, f.period || null))
@@ -124,6 +148,21 @@ export const ledgerEntries = (page, site) => {
   return out
 }
 
+// The entries a counterparty ledger page holds. A summary ledger (PERIODS)
+// holds none itself: its period pages overlapping `period` (all of them when
+// `period` is null) are read through ctx.fetchSitemap and ctx.fetchPage.
+// -> { entries, periods: [slug] }
+export const counterpartyEntries = async (page, site, period, ctx) => {
+  const summary = ((page && page.story) || []).some(it => it.type === 'timebank' && extractCommands(it.text || '').periods)
+  if (!summary || typeof ctx.fetchSitemap !== 'function') return { entries: ledgerEntries(page, site), periods: [] }
+  const map = await Promise.resolve().then(() => ctx.fetchSitemap(site)).catch(() => null)
+  const pages = periodPagesOf(map, page.title).filter(p => overlaps(period, monthBounds(p.month)))
+  const got = await Promise.all(pages.map(p => Promise.resolve().then(() => ctx.fetchPage(site, p.slug)).catch(() => null)))
+  const entries = []
+  got.forEach(pg => { if (pg) entries.push(...ledgerEntries(pg, site)) })
+  return { entries: [...ledgerEntries(page, site), ...entries], periods: pages.filter((p, i) => got[i]).map(p => p.slug) }
+}
+
 // ctx.pulled: entries pulled from Time Transaction pages (thawed, not written).
 export const verifyItem = async (item, ctx) => {
   const text = (item && item.text) || ''
@@ -138,6 +177,7 @@ export const verifyItem = async (item, ctx) => {
     title: ctx.title,
     site,
     slug,
+    pageSlug: ctx.pageSlug || slug,
     period,
     notify,
     lineup,
@@ -176,13 +216,16 @@ export const verifyItem = async (item, ctx) => {
       reachable: !!page,
       title: page && page.title ? page.title : null,
       matched: [],
-      unmatched: []
+      unmatched: [],
+      periods: []
     }
     if (!page) {
       result.unreachable.push(cp.id)
       record.unmatched = cp.entries
     } else {
-      const m = matchLedgers(cp.entries, ledgerEntries(page, cp.site), { slug, site, period })
+      const theirs = await counterpartyEntries(page, cp.site, period, ctx)
+      record.periods = theirs.periods
+      const m = matchLedgers(cp.entries, theirs.entries, { slug, site, period })
       record.matched = m.matched.map(x => ({ ...x.mine, matchedBy: x.by }))
       record.unmatched = m.unmatched
     }

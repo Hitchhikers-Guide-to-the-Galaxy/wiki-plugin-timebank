@@ -175,3 +175,77 @@ class Drawing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PeriodsAndOccasions(unittest.TestCase):
+    """0.6.0: dated lines, recurring pages, period ledgers, months and the ledger check."""
+    P = "http://alice.localhost:4242/view/childcare-for-david"
+
+    def recurring(self):
+        story = [{"type": "transaction", "id": f"c{i}", "text": txn(A, D, h, d, "Childcare")}
+                 for i, (h, d) in enumerate([("3 hours", "18 June 2026"), ("3 hours", "16 July 2026"), ("4 hours", "10 September 2026")])]
+        return {"title": "Childcare for David", "story": story, "journal": [{"type": "create", "item": {"title": "Childcare for David"}, "date": 1}]}
+
+    def test_a_dated_line(self):
+        [e] = tr.parse_entries(f"2026-07-16 [{self.P} Childcare for David] from [{A} Alice's Ledger]: 3 hours")
+        self.assertEqual(e["label"], "Childcare for David")
+        self.assertEqual(e["date"], tr.parse_date("16 July 2026"))
+        self.assertEqual(e["txn"]["slug"], "childcare-for-david")
+        self.assertTrue(tr.COMMANDS.match("PERIODS: 10") and tr.COMMANDS.match("OWNER: [[About Alice]]") and tr.COMMANDS.match("INDEX"))
+        c = tr.extract_commands("OWNER: [[About Alice]]\nPERIODS")
+        self.assertEqual((tr.owner_name(c["owner"]), c["periods"]), ("Alice", {"recent": 10}))
+
+    def test_occasions_of_a_recurring_page(self):
+        fs = tr.page_transactions(self.recurring(), "alice.localhost:4242", "childcare-for-david")
+        self.assertEqual([f["occasion"] for f in fs], [{"n": 1, "of": 3}, {"n": 2, "of": 3}, {"n": 3, "of": 3}])
+        ts = tr.dedupe([{"facts": f, "site": "alice.localhost:4242", "home": "alice.localhost:4242"} for f in fs])
+        self.assertEqual(len(ts), 3, "page plus item: three occasions, three transactions")
+        david = {"site": "david.localhost:4242", "slug": "davids-ledger",
+                 "entries": tr.ledger_entries({"story": [{"type": "timebank", "text":
+                     f"2026-07-16 [{self.P} Childcare for David] from [{A} Alice's Ledger]: 3 hours"}]}, "david.localhost:4242")}
+        self.assertEqual([tr.carries(david, t, "receiver") for t in ts], [False, True, False])
+
+    def test_period_titles_and_months(self):
+        self.assertEqual(tr.period_of_title("Alice's Ledger 2026-09"), {"base": "Alice's Ledger", "month": "2026-09"})
+        self.assertIsNone(tr.period_of_title("Alice's Ledger 2026-13"))
+        self.assertEqual(tr.month_bounds("2026-09"), (tr.parse_date("1 September 2026"), tr.parse_date("30 September 2026")))
+        m = [{"slug": "alices-ledger-2026-07", "title": "Alice's Ledger 2026-07"}, {"slug": "alices-ledger-2026-06", "title": "Alice's Ledger 2026-06"},
+             {"slug": "bobs-ledger-2026-06", "title": "Bob's Ledger 2026-06"}]
+        self.assertEqual([p["slug"] for p in tr.period_pages_of(m, "Alice's Ledger")], ["alices-ledger-2026-06", "alices-ledger-2026-07"])
+        ts = [{"facts": {"date": tr.parse_date(d)}} for d in ("30 June 2026", "1 July 2026", "2 July 2026")]
+        self.assertEqual({k: len(v) for k, v in tr.by_month(ts).items()}, {"2026-06": 1, "2026-07": 2})
+        self.assertEqual(tr.bar_label("2026-09"), "Sep")
+        self.assertEqual(tr.bar_label("2026-W37"), "W37")
+
+    def test_a_party_with_no_known_ledger(self):
+        C = "https://carol.timebank.example/view/carols-ledger"
+        [t] = tr.dedupe([{"facts": f, "site": "bob.localhost:4242", "home": "bob.localhost:4242"}
+                         for f in tr.page_transactions(page("Bread for Carol", txn(B, C, "1 hour", "7 July 2026")), "bob.localhost:4242")])
+        self.assertEqual(tr.state_of(t, [dict(m, entries=[]) for m in MEMBERS]), "unknown party")
+
+    def test_the_summary_net_equals_the_report_net_when_every_page_is_logged(self):
+        pages = [("Gardening for Bob", A, B, "2 hours", "6 June 2026", "alice"), ("Soup for Alice", D, A, "1 hour", "9 June 2026", "david"),
+                 ("Lift for David", B, D, "30 minutes", "3 July 2026", "bob")]
+        copies = []
+        for title, g, r, h, d, home in pages:
+            for f in tr.page_transactions(page(title, txn(g, r, h, d)), f"{home}.localhost:4242"):
+                copies.append({"facts": f, "site": f"{home}.localhost:4242", "home": f"{home}.localhost:4242"})
+        ts = tr.dedupe(copies)
+        ledgers = []
+        for m in MEMBERS:
+            lines = []
+            for t in ts:
+                f = t["facts"]
+                for side, word in (("giver", "for"), ("receiver", "from")):
+                    if tr.same_ledger(f[side], m):
+                        other = f["receiver" if side == "giver" else "giver"]
+                        day = tr.month_of(f["date"]) + "-" + str(tr._EPOCH.__class__.fromtimestamp(f["date"] / 1000, tr._dt.timezone.utc).day).zfill(2)
+                        lines.append(f"{day} [http://{t['home']}/view/{f['page']['slug']} {f['page']['title']}] {word} "
+                                     f"[http://{other['site']}/view/{other['slug']} X]: {f['minutes']} minutes")
+            entries = tr.ledger_entries({"story": [{"type": "timebank", "text": "\n".join(lines)}]}, m["site"])
+            ledgers.append(dict(m, entries=entries, logged=tr.logged_balance(entries), periods=["p"]))
+        for t in ts:
+            t["state"] = tr.state_of(t, ledgers)
+        self.assertEqual({t["state"] for t in ts}, {"verified"})
+        check = tr.ledger_check(ledgers, tr.summarise(ts, MEMBERS))
+        self.assertEqual([(c["member"], c["ledger"], c["diff"]) for c in check], [("Alice", 1.0, 0), ("Bob", -1.5, 0), ("David", 0.5, 0)])

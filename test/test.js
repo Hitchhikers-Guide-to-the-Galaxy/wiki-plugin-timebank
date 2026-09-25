@@ -221,7 +221,7 @@ describe('timebank 0.2.0', () => {
 
     test('extractCommands normalises NOTIFY urls', () => {
       const c = extractCommands('NOTIFY: ntfy.sh/timebank-david')
-      assert.deepEqual(c, { notify: 'https://ntfy.sh/timebank-david', lineup: false, tool: false, watch: [] })
+      assert.deepEqual(c, { notify: 'https://ntfy.sh/timebank-david', lineup: false, tool: false, watch: [], owner: null, periods: null, index: false, balance: null })
       assert.equal(extractCommands('NOTIFY: http://pi:4280/timebank').notify, 'http://pi:4280/timebank')
       assert.equal(extractCommands('Gardening: 1h').notify, null)
     })
@@ -883,8 +883,8 @@ describe('timebank 0.4.0 Time Transaction pages', () => {
     const facts = pageTransactions(txnPage, 'demo.localhost:4242')
 
     test('the line a transaction implies, from each side', () => {
-      assert.equal(entryLineFor(facts[0], alice), `[[Repairs for David, 3 September]] for [${DAVID} David's Ledger]: 1 hour`)
-      assert.equal(entryLineFor(facts[0], david), `[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`)
+      assert.equal(entryLineFor(facts[0], alice), `2026-09-03 [[Repairs for David, 3 September]] for [${DAVID} David's Ledger]: 1 hour`)
+      assert.equal(entryLineFor(facts[0], david), `2026-09-03 [${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`)
       assert.equal(entryLineFor(facts[0], { site: 'demo.localhost:4242', slug: 'bobs-ledger' }), null)
     })
 
@@ -936,7 +936,7 @@ describe('timebank 0.4.0 Time Transaction pages', () => {
     test('a stale line is replaced by the page\'s current facts', () => {
       const text = `LINEUP\n[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 2 hours`
       const { stale } = pullEntries(facts, david, parseEntries(text))
-      assert.equal(freezeText(text, [], stale), `LINEUP\n[${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`)
+      assert.equal(freezeText(text, [], stale), `LINEUP\n2026-09-03 [${TXN} Repairs for David, 3 September] from [${ALICE} Alice's Ledger]: 1 hour`)
     })
   })
 
@@ -997,13 +997,15 @@ describe('timebank 0.4.0 Time Transaction pages', () => {
       assert.ok(html.includes('timebank-badge partial" style="margin-left:0">awaiting sign-off<'))
       assert.ok(html.includes('<button data-timebank-action="freeze">Freeze 1 entry into the ledger</button>'))
       assert.ok(html.includes('timebank-badge pending" style="margin-left:0">pulled<'))
-      assert.ok(html.includes('data-page-name="soup-for-alices-ledger"'), 'an entry with no page is offered a new page')
+      assert.ok(html.includes('data-page-name="soup-for-alice"'), 'an entry with no page is offered a new page, named for the work and the person')
       assert.ok(html.includes('create from Time Transaction Template'))
     })
 
     test('suggested titles and sitemap candidates', () => {
       const [e] = parseEntries(`Gardening for [${ALICE} Alice's Ledger]: 2 hours`)
-      assert.equal(suggestTitle(e), "Gardening for Alice's Ledger")
+      assert.equal(suggestTitle(e), 'Gardening for Alice')
+      const [r] = parseEntries(`Soup from [${ALICE} Alice’s Ledger]: 1 hour`)
+      assert.equal(suggestTitle(r), 'Soup from Alice')
       const map = [
         { slug: 'repairs-for-david-3-september', links: { 'time-transaction': 'x', 'alices-ledger': 'y' } },
         { slug: 'time-transaction-template', links: { 'time-transaction': 'x' } },
@@ -1131,7 +1133,7 @@ describe('timebank 0.5.0 Thank You Invoice: watched sites, awaiting, Reconcile',
       assert.equal(awaiting.length, 1)
       assert.equal(awaiting[0].awaiting, true)
       assert.equal(awaiting[0].direction, 'gave')
-      assert.equal(awaiting[0].raw, `[${PAGE} Event help from Alice, 23 September] for [${DAVID} David's Ledger]: 6 hours`)
+      assert.equal(awaiting[0].raw, `2026-09-23 [${PAGE} Event help from Alice, 23 September] for [${DAVID} David's Ledger]: 6 hours`)
       assert.equal(awaitingMinutes(awaiting), 360)
       assert.equal(awaitingText(awaiting), '6h awaiting reconcile')
     })
@@ -1224,5 +1226,234 @@ describe('shared fixtures for the broker report tool (tools/timebank_report.py)'
     for (const [s, want] of fixtures.dates) assert.equal(parseDate(s), want, s)
     for (const [s, want] of fixtures.urls) assert.deepEqual(parseLedgerUrl(s), want, s)
     for (const [a, b, want] of fixtures.sameSite) assert.equal(sameSite(a, b), want, `${a} ${b}`)
+  })
+})
+
+// --- 0.6.0: occasions, period ledgers, summary, index, balance ---
+
+const {
+  periodOfTitle, periodPagesOf, ledgersInSitemap, identitySlug, monthBounds, periodLedger, aggregateStatus,
+  summariseLedger, classifyOccasions, stateCounts, orphanPlan, indexCandidates, ownerName, signedHours,
+  renderSummary, renderBalance, renderIndex, claimWritten: claimW, occasionKey, inPeriod, personOf: personOfName,
+  counterpartyEntries, pageTransactions, pullEntries, isoDay
+} = timebank
+
+describe('timebank 0.6.0 recurring work: page plus item', () => {
+  const A = 'http://alice.localhost:4242/view/alices-ledger'
+  const D = 'http://david.localhost:4242/view/davids-ledger'
+  const P = 'http://alice.localhost:4242/view/childcare-for-david'
+  const item = (id, date, hours) => ({ type: 'transaction', id, text: `GIVER: [${A} Alice's Ledger]\nRECEIVER: [${D} David's Ledger]\nHOURS: ${hours}\nDATE: ${date}\nWHAT: Childcare` })
+  const page = { title: 'Childcare for David', story: [item('c1', '18 June 2026', '3 hours'), { type: 'date', id: 'd2', text: '2026-07-16 Childcare for David' }, item('c2', '16 July 2026', '3 hours'), item('c3', '10 September 2026', '4 hours')] }
+  const facts = pageTransactions(page, 'alice.localhost:4242', 'childcare-for-david')
+  const david = { site: 'david.localhost:4242', slug: 'davids-ledger' }
+
+  test('one fact per transaction item, each an occasion of the page', () => {
+    assert.equal(facts.length, 3)
+    assert.deepEqual(facts.map(f => f.occasion), [{ n: 1, of: 3 }, { n: 2, of: 3 }, { n: 3, of: 3 }])
+    assert.deepEqual(facts.map(occasionKey), ['childcare-for-david#c1', 'childcare-for-david#c2', 'childcare-for-david#c3'])
+  })
+
+  test('a dated line names its occasion; the date prefix is parsed off the label', () => {
+    const [e] = parseEntries(`2026-07-16 [${P} Childcare for David] from [${A} Alice's Ledger]: 3 hours`)
+    assert.equal(e.linked, true)
+    assert.equal(e.label, 'Childcare for David')
+    assert.equal(e.txn.slug, 'childcare-for-david')
+    assert.equal(e.date, parseDate('16 July 2026'))
+  })
+
+  test('pulled lines carry the date, and each written line holds one occasion', () => {
+    const written = parseEntries(`2026-06-18 [${P} Childcare for David] from [${A} Alice's Ledger]: 3 hours\n2026-07-16 [${P} Childcare for David] from [${A} Alice's Ledger]: 3 hours`)
+    const { pulled, frozen, stale } = pullEntries(facts, david, written)
+    assert.deepEqual([pulled.length, frozen.length, stale.length], [1, 2, 0])
+    assert.ok(pulled[0].raw.startsWith('2026-09-10 [http://alice.localhost:4242/view/childcare-for-david Childcare for David] from'))
+    assert.equal(pulled[0].facts.page.itemId, 'c3')
+  })
+
+  test('an undated line claims the occasion of the same minutes, once', () => {
+    const written = parseEntries(`[${P} Childcare for David] from [${A} Alice's Ledger]: 4 hours`)
+    const used = new Set()
+    const e3 = pullEntries([facts[2]], david, []).pulled[0]
+    const e1 = pullEntries([facts[0]], david, []).pulled[0]
+    assert.equal(claimW(written, e3, used, david.site), written[0])
+    assert.equal(claimW(written, e1, used, david.site), null, 'a claimed line holds no second occasion')
+  })
+
+  test('a period ledger pulls only the occasions dated inside it', () => {
+    const period = { start: parseDate('1 July 2026'), end: parseDate('31 July 2026') }
+    const { pulled } = pullEntries(facts, david, [], period)
+    assert.deepEqual(pulled.map(e => e.facts.page.itemId), ['c2'])
+    assert.equal(inPeriod({ date: null }, period), false)
+    assert.equal(inPeriod({ date: null }, null), true)
+  })
+
+  test('the matcher pairs page plus occasion: dated lines by day, never across days', () => {
+    const mine = parseEntries(`2026-06-18 [${P} Childcare for David] from [${A} Alice's Ledger]: 3 hours\n2026-07-16 [${P} Childcare for David] from [${A} Alice's Ledger]: 3 hours`)
+      .map(e => ({ ...e, counterparty: { ...e.counterparty } }))
+    const theirs = parseEntries(`2026-07-16 [[Childcare for David]] for [${D} David's Ledger]: 3 hours\n2026-09-10 [[Childcare for David]] for [${D} David's Ledger]: 4 hours`)
+      .map(e => ({ ...e, txn: { ...e.txn, site: 'alice.localhost:4242' }, period: null }))
+    const m = matchLedgers(mine, theirs, { slug: 'davids-ledger', site: 'david.localhost:4242' })
+    assert.equal(m.matched.length, 1)
+    assert.equal(m.matched[0].mine.date, parseDate('16 July 2026'))
+    assert.equal(m.matched[0].by, 'page')
+    assert.equal(m.unmatched[0].date, parseDate('18 June 2026'), 'the June line finds no June line on her side')
+  })
+
+  test('undated lines of a recurring page pair by minutes before any other', () => {
+    const mine = parseEntries(`[${P} Childcare for David] from [${A} Alice's Ledger]: 4 hours\n[${P} Childcare for David] from [${A} Alice's Ledger]: 3 hours`)
+    const theirs = parseEntries(`[[Childcare for David]] for [${D} David's Ledger]: 3 hours\n[[Childcare for David]] for [${D} David's Ledger]: 4 hours`)
+      .map(e => ({ ...e, txn: { ...e.txn, site: 'alice.localhost:4242' }, period: null }))
+    const m = matchLedgers(mine, theirs, { slug: 'davids-ledger', site: 'david.localhost:4242' })
+    assert.deepEqual(m.matched.map(x => [x.mine.time, x.theirs.time]), [[4, 4], [3, 3]])
+  })
+
+  test('titles name the work and the person, with no date', () => {
+    assert.equal(personOfName("Alice's Ledger"), 'Alice')
+    assert.equal(personOfName('David Ledger'), 'David')
+    assert.equal(personOfName('Known Ledgers'), 'Known Ledgers')
+  })
+})
+
+describe('timebank 0.6.0 period ledgers and the summary', () => {
+  const A = 'http://alice.localhost:4242/view/alices-ledger'
+  const B = 'http://bob.localhost:4242/view/bobs-ledger'
+  const sitemap = [
+    { slug: 'alices-ledger', title: "Alice's Ledger", links: { 'about-alice': 'x' } },
+    { slug: 'alices-ledger-2026-07', title: "Alice's Ledger 2026-07" },
+    { slug: 'alices-ledger-2026-06', title: "Alice's Ledger 2026-06" },
+    { slug: 'alices-ledger-2026-13', title: "Alice's Ledger 2026-13" },
+    { slug: 'bobs-ledger-2026-06', title: "Bob's Ledger 2026-06" },
+    { slug: 'gardening-for-bob', title: 'Gardening for Bob', links: { 'time-transaction': 'x' } },
+    { slug: 'time-transaction-template', title: 'Time Transaction Template', links: { 'time-transaction': 'x' } }
+  ]
+
+  test('period titles, month bounds and the identity of a period page', () => {
+    assert.deepEqual(periodOfTitle("Alice's Ledger 2026-09"), { base: "Alice's Ledger", month: '2026-09' })
+    assert.equal(periodOfTitle("Alice's Ledger"), null)
+    assert.equal(periodOfTitle('Report 2026-13'), null)
+    const b = monthBounds('2026-02')
+    assert.equal(b.start, parseDate('1 February 2026'))
+    assert.equal(b.end, parseDate('28 February 2026'))
+    assert.equal(identitySlug("Alice's Ledger 2026-09", 'alices-ledger-2026-09'), 'alices-ledger')
+    assert.equal(identitySlug("Alice's Ledger", 'alices-ledger'), 'alices-ledger')
+  })
+
+  test('PERIODS discovery: period pages by title prefix from the sitemap, oldest first', () => {
+    assert.deepEqual(periodPagesOf(sitemap, "Alice's Ledger").map(p => p.slug), ['alices-ledger-2026-06', 'alices-ledger-2026-07'])
+    assert.deepEqual(ledgersInSitemap(sitemap).map(l => [l.slug, l.periods.length]), [['alices-ledger', 2], ['bobs-ledger', 1]])
+    assert.deepEqual(extractCommands('OWNER: [[About Alice]]\nPERIODS: 5').periods, { recent: 5 })
+    assert.equal(extractCommands('OWNER: [[About Alice]]\nPERIODS').owner.slug, 'about-alice')
+    assert.equal(extractCommands('PERIODS').periods.recent, 10)
+    assert.equal(ownerName({ name: 'About Alice' }), 'Alice')
+  })
+
+  test('the aggregate badge: the worst wins, empty periods do not count', () => {
+    assert.equal(aggregateStatus(['ok', 'ok']), 'ok')
+    assert.equal(aggregateStatus(['ok', 'partial', 'none']), 'partial')
+    assert.equal(aggregateStatus(['partial', 'fail', 'ok']), 'fail')
+    assert.equal(aggregateStatus(['none']), 'none')
+    assert.equal(aggregateStatus([]), 'none')
+  })
+
+  const june = periodLedger({ title: "Alice's Ledger 2026-06", story: [{ type: 'timebank', id: 'j', text: `START: 1 June 2026\nEND: 30 June 2026\n2026-06-06 [[Gardening for Bob]] for [${B} Bob's Ledger]: 2 hours\n2026-06-20 [http://bob.localhost:4242/view/dog-walking-for-alice Dog walking for Alice] from [${B} Bob's Ledger]: 1.5 hours\nAdmin: 1 hour` }] }, { slug: 'alices-ledger-2026-06', month: '2026-06' })
+  const july = periodLedger({ title: "Alice's Ledger 2026-07", story: [{ type: 'timebank', id: 'k', text: `START: 1 July 2026\nEND: 31 July 2026\nLINEUP\n2026-07-11 [[Gardening for Bob]] for [${B} Bob's Ledger]: 2 hours\n2026-07-02 [[Soup]] for [${B} Bob's Ledger]: 30 minutes` }] }, { slug: 'alices-ledger-2026-07', month: '2026-07' })
+
+  test('a period page read from its site', () => {
+    assert.equal(june.month, '2026-06')
+    assert.equal(june.period.start, parseDate('1 June 2026'))
+    assert.equal(july.lineup, true)
+    assert.equal(june.written.filter(e => e.linked).length, 2)
+  })
+
+  test('BALANCE numbers: given, received and net across periods; the most recent first', () => {
+    const s = summariseLedger([{ ...june, status: 'ok' }, { ...july, status: 'partial' }], { recent: 3 })
+    assert.equal(s.given, 4.5)
+    assert.equal(s.received, 1.5)
+    assert.equal(s.net, 3)
+    assert.equal(s.count, 4)
+    assert.equal(s.status, 'partial')
+    assert.deepEqual(s.periods.map(p => [p.month, p.given, p.received, p.net]), [['2026-06', 2, 1.5, 0.5], ['2026-07', 2.5, 0, 2.5]])
+    assert.deepEqual(s.recent.map(e => isoDay(e.date)), ['2026-07-11', '2026-07-02', '2026-06-20'])
+    assert.equal(signedHours(3, formatHours), '+3h')
+    assert.equal(signedHours(-1.5, formatHours), '-1h 30m')
+    assert.equal(signedHours(0, formatHours), '0h')
+    const html = renderSummary({ ...s, title: "Alice's Ledger", site: 'alice.localhost:4242', owner: { name: 'About Alice', slug: 'about-alice' }, ownerName: 'Alice' })
+    assert.ok(html.includes('net +3h'))
+    assert.ok(html.includes('data-page-name="alices-ledger-2026-07"'))
+    assert.ok(html.includes('data-page-name="about-alice"'))
+    const bal = renderBalance({ ...s, title: "Alice's Ledger", site: 'alice.localhost:4242', ownerName: 'Alice' })
+    assert.ok(bal.includes('+3h') && bal.includes('4h 30m') && bal.includes('1h 30m'))
+    assert.ok(bal.includes('data-page-name="transactions-index"'))
+  })
+
+  test('a period page matches as the ledger it belongs to: a summary counterparty is read through its periods', async () => {
+    const bobSummary = { title: "Bob's Ledger", story: [{ type: 'timebank', text: 'OWNER: [[About Bob]]\nPERIODS' }] }
+    const bobJune = { title: "Bob's Ledger 2026-06", story: [{ type: 'timebank', text: `START: 1 June 2026\nEND: 30 June 2026\n2026-06-06 [http://alice.localhost:4242/view/gardening-for-bob Gardening for Bob] from [${A} Alice's Ledger]: 2 hours` }] }
+    const bobJuly = { title: "Bob's Ledger 2026-07", story: [{ type: 'timebank', text: 'START: 1 July 2026\nEND: 31 July 2026' }] }
+    const pages = { 'bobs-ledger': bobSummary, 'bobs-ledger-2026-06': bobJune, 'bobs-ledger-2026-07': bobJuly }
+    const ctx = {
+      title: "Alice's Ledger 2026-06", slug: 'alices-ledger', pageSlug: 'alices-ledger-2026-06', site: 'alice.localhost:4242',
+      fetchPage: async (s, slug) => pages[slug] || null,
+      fetchSitemap: async () => [{ slug: 'bobs-ledger', title: "Bob's Ledger" }, { slug: 'bobs-ledger-2026-06', title: "Bob's Ledger 2026-06" }, { slug: 'bobs-ledger-2026-07', title: "Bob's Ledger 2026-07" }]
+    }
+    const text = `START: 1 June 2026\nEND: 30 June 2026\n2026-06-06 [[Gardening for Bob]] for [${B} Bob's Ledger]: 2 hours`
+    const r = await verifyItem({ text }, ctx)
+    assert.equal(r.status, 'ok')
+    assert.equal(r.pageSlug, 'alices-ledger-2026-06')
+    assert.deepEqual(r.counterparties[0].periods, ['bobs-ledger-2026-06'], 'only the overlapping period page is read')
+    const all = await counterpartyEntries(bobSummary, 'bob.localhost:4242', null, ctx)
+    assert.deepEqual(all.periods, ['bobs-ledger-2026-06', 'bobs-ledger-2026-07'])
+  })
+
+  test('index candidates leave out the template, the topic and ledgers', () => {
+    assert.deepEqual(indexCandidates(sitemap, ['alices-ledger']).map(p => p.slug), ['gardening-for-bob'])
+  })
+})
+
+describe('timebank 0.6.0 Transactions Index classification', () => {
+  const site = 'alice.localhost:4242'
+  const A = 'http://alice.localhost:4242/view/alices-ledger'
+  const B = 'http://bob.localhost:4242/view/bobs-ledger'
+  const C = 'https://carol.timebank.example/view/carols-ledger'
+  const txnPage = (title, date, hours, giver = A, receiver = B) => ({ title, story: [{ type: 'transaction', id: asSlug(title) + date.replace(/\s/g, ''), text: `GIVER: [${giver} G]\nRECEIVER: [${receiver} R]\nHOURS: ${hours}\nDATE: ${date}` }] })
+  const facts = [
+    ...pageTransactions(txnPage('Gardening for Bob', '6 June 2026', '2 hours'), site),
+    ...pageTransactions(txnPage('Jam for Bob', '9 June 2026', '1 hour'), site),
+    ...pageTransactions(txnPage('Soup for Bob', '2 July 2026', '30 minutes'), site),
+    ...pageTransactions(txnPage('Plants for Bob', '4 August 2026', '1 hour'), site),
+    ...pageTransactions(txnPage('Lesson for Carol', '5 June 2026', '1 hour', A, C), site),
+    ...pageTransactions(txnPage('Bread for Bob', '7 July 2026', '1 hour', B, C), site)
+  ]
+  const june = periodLedger({ title: "Alice's Ledger 2026-06", story: [{ type: 'timebank', id: 'j', text: `START: 1 June 2026\nEND: 30 June 2026\n2026-06-06 [[Gardening for Bob]] for [${B} Bob's Ledger]: 2 hours` }] }, { slug: 'alices-ledger-2026-06', month: '2026-06' })
+  const july = periodLedger({ title: "Alice's Ledger 2026-07", story: [{ type: 'timebank', id: 'k', text: 'START: 1 July 2026\nEND: 31 July 2026\nLINEUP' }] }, { slug: 'alices-ledger-2026-07', month: '2026-07' })
+  const ledgers = [{ title: "Alice's Ledger", slug: 'alices-ledger', site, periods: [june, july] }]
+  const rows = classifyOccasions(facts, ledgers, site)
+  const state = t => rows.find(r => r.facts.page.title === t)
+
+  test('logged, awaiting and orphan', () => {
+    assert.equal(state('Gardening for Bob').state, 'logged')
+    assert.equal(state('Gardening for Bob').period.slug, 'alices-ledger-2026-06')
+    assert.equal(state('Soup for Bob').state, 'awaiting', 'July pulls it (LINEUP)')
+    assert.equal(state('Jam for Bob').state, 'orphan', 'June is closed and has no line')
+    assert.match(state('Plants for Bob').reason, /no period ledger holds 2026-08/)
+    assert.equal(state('Lesson for Carol').state, 'orphan')
+    assert.equal(state('Bread for Bob').reason, 'names no ledger on this site')
+    assert.deepEqual(stateCounts(rows), { logged: 1, awaiting: 1, orphan: 4 })
+  })
+
+  test('Log the orphans: into the period that holds the date, or a new period page', () => {
+    const plan = orphanPlan(rows, site)
+    assert.deepEqual(plan.edits.map(e => [e.slug, e.lines.length]), [['alices-ledger-2026-06', 2]])
+    assert.ok(plan.edits[0].text.includes('2026-06-09 [[Jam for Bob]] for [http://bob.localhost:4242/view/bobs-ledger R]: 1 hour'))
+    assert.deepEqual(plan.creates.map(c => [c.title, c.lines.length]), [["Alice's Ledger 2026-08", 1]])
+    assert.ok(plan.creates[0].text.startsWith('START: 1 August 2026\nEND: 31 August 2026\n2026-08-04 [[Plants for Bob]]'))
+    assert.equal(plan.skipped.length, 1)
+  })
+
+  test('the index draws states, unknown parties and the lineup and log buttons', () => {
+    const html = renderIndex({ site, rows, unknown: ['carol.timebank.example/carols-ledger'], pages: 6 })
+    assert.ok(html.includes('1 logged') && html.includes('1 awaiting') && html.includes('4 orphan'))
+    assert.ok(html.includes('unknown party'))
+    assert.ok(html.includes('data-timebank-action="lineup"'))
+    assert.ok(html.includes('Log the 4 orphans'))
   })
 })

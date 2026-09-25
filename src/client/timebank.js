@@ -28,6 +28,8 @@ import * as verify from './verify.js'
 import * as tool from './tool.js'
 import * as txn from './txn.js'
 import * as links from './links.js'
+import * as periods from './periods.js'
+import * as views from './views.js'
 import { transactionPlugin } from './transaction.js'
 
 const {
@@ -38,6 +40,12 @@ const { verifyItem, formatVerifyMessages, signOffs } = verify
 const { findCandidates, renderReport, sitesMentioned, awaitingText, TOOL_TITLE } = tool
 const { pullEntries, pageTransactions, transactionCandidates, freezeText, watchedSites, awaitingEntries, reconcilePlan } = txn
 const { resolveLike } = links
+const {
+  identitySlug, periodPagesOf, periodLedger, summariseLedger, ownerName, ledgersInSitemap, ledgerItemOf,
+  indexCandidates, classifyOccasions, orphanPlan
+} = periods
+const { renderSummary, renderBalance, renderIndex } = views
+const { periodOf } = verify
 
 // --- Markup ---
 
@@ -192,7 +200,16 @@ const registerSites = entries => {
   }
 }
 
-const contextFor = $item => ({ title: titleOf($item), slug: slugOf($item), site: siteOf($item), fetchPage })
+// A period page ("Alice's Ledger 2026-09") is the ledger it belongs to: its
+// identity is the summary's slug, while its own slug is where it is saved.
+const contextFor = $item => ({
+  title: titleOf($item),
+  slug: identitySlug(titleOf($item), slugOf($item)),
+  pageSlug: slugOf($item),
+  site: siteOf($item),
+  fetchPage,
+  fetchSitemap
+})
 
 // --- Thaw: gathering transaction pages ---
 
@@ -238,7 +255,8 @@ const siteFacts = site => {
   return promise
 }
 
-const meOf = $item => ({ site: normSite(siteOf($item)), slug: slugOf($item) })
+const meOf = $item => ({ site: normSite(siteOf($item)), slug: identitySlug(titleOf($item), slugOf($item)) })
+const periodOfText = text => periodOf(extractDates(text || ''))
 
 // -> { pulled, frozen, stale } for a LINEUP ledger; null otherwise.
 const gather = async ($item, item) => {
@@ -246,7 +264,7 @@ const gather = async ($item, item) => {
   if (!extractCommands(text).lineup) return null
   const me = meOf($item)
   const facts = [...lineupFacts($item), ...(await siteFacts(me.site))]
-  return pullEntries(facts, me, parseEntries(text))
+  return pullEntries(facts, me, parseEntries(text), periodOfText(text))
 }
 
 // -> { awaiting, watched } — incoming pages on watched sites not yet carried.
@@ -256,7 +274,7 @@ const gatherAwaiting = async ($item, item, pull) => {
   const watched = watchedSites(text, me.site)
   if (!watched.length) return { awaiting: [], watched }
   const facts = (await Promise.all(watched.map(siteFacts))).flat()
-  return { awaiting: awaitingEntries(facts, me, parseEntries(text), pull ? pull.pulled : []), watched }
+  return { awaiting: awaitingEntries(facts, me, parseEntries(text), pull ? pull.pulled : [], periodOfText(text)), watched }
 }
 
 // Awaiting rows: shown under the ledger, never counted in its total.
@@ -386,6 +404,10 @@ const onBadgeClick = ($item, item) => {
 // --- Ledger Verification Tool (TOOL mode) ---
 
 const isTool = item => extractCommands((item && item.text) || '').tool
+const modeOf = item => {
+  const c = extractCommands((item && item.text) || '')
+  return c.tool ? 'tool' : c.index ? 'index' : c.balance ? 'balance' : c.periods ? 'periods' : 'ledger'
+}
 
 // The ledger on the page immediately to the tool's left.
 const ledgerLeftOf = $tool => {
@@ -393,7 +415,7 @@ const ledgerLeftOf = $tool => {
   if (!$page.length) return null
   const cands = $page.find('.item.timebank').toArray()
     .map(el => ({ $item: $(el), item: $(el).data('item') }))
-    .filter(c => c.item && !isTool(c.item))
+    .filter(c => c.item && ['ledger', 'periods'].includes(modeOf(c.item)))
   if (!cands.length) return { $page, none: true }
   const clicked = lastClicked && lastClicked.key === $page.data('key') && cands.find(c => c.item.id === lastClicked.id)
   const withLinks = cands.find(c => parseEntries(c.item.text || '').some(e => e.linked) || extractCommands(c.item.text || '').lineup || extractCommands(c.item.text || '').watch.length)
@@ -412,6 +434,14 @@ const runTool = async ($tool, note) => {
     return toolMessage($tool, `The page to the left, <b>${escape(led.$page.find('h1').first().text().trim())}</b>, holds no timebank ledger. Click the badge on a ledger to check it here.`)
   }
   toolMessage($tool, `Checking <b>${escape(titleOf(led.$item))}</b>…`)
+  if (modeOf(led.item) === 'periods') {
+    const model = await runSummary(led.$item, led.item)
+    const context = contextOf(led.$page)
+    return $tool.find('.timebank-tool').html([
+      `<p style="margin:6px 0">${tool.pill(views.STATUS_PILL[model.status][0], views.STATUS_PILL[model.status][1])} <b>${escape(model.title)}</b> on ${escape(model.site)} is a summary ledger: its entries are written in its period pages, and its badge is the worst of theirs. Open a period page and click its badge to check its entries here.</p>`,
+      renderSummary(model, context)
+    ].join('\n'))
+  }
   const out = await runVerification(led.$item, led.item, { retry: false })
   if (!out) return toolMessage($tool, 'The check did not finish; click the badge again.')
   const { result, ctx, pull, incoming } = out
@@ -629,12 +659,267 @@ const emitTool = ($item) => {
   setTimeout(() => runTool($item).catch(err => toolMessage($item, `The tool failed: ${escape(err.message || err)}`)), 0)
 }
 
+// --- Summary ledger (PERIODS), balance (BALANCE), Transactions Index (INDEX) ---
+
+// Fetches memoised for one drawing, each capped at five seconds so an
+// unreachable party (a site that does not resolve) cannot hold the page.
+const withTimeout = (promise, ms = 5000) => Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(null), ms))])
+const memoFetch = () => {
+  const pages = new Map()
+  const maps = new Map()
+  return {
+    page: (site, slug) => {
+      const key = `${normSite(site)}/${slug}`
+      if (!pages.has(key)) pages.set(key, withTimeout(fetchPage(site, slug)).catch(() => null))
+      return pages.get(key)
+    },
+    sitemap: site => {
+      const key = normSite(site)
+      if (!maps.has(key)) maps.set(key, withTimeout(fetchSitemap(site)).catch(() => null))
+      return maps.get(key)
+    }
+  }
+}
+
+// A period's badge, as its own ledger item would draw it: written entries,
+// plus the entries it pulls when it has LINEUP.
+const periodStatus = async (site, identity, p, memo) => {
+  const me = { site: normSite(site), slug: identity }
+  const pulled = p.lineup ? pullEntries(await siteFacts(site), me, p.written, p.period).pulled : []
+  const r = await verifyItem({ text: p.text }, {
+    title: p.title, slug: identity, pageSlug: p.slug, site, fetchPage: memo.page, fetchSitemap: memo.sitemap, pulled
+  })
+  return r.status
+}
+
+// The summary ledger titled `title` on `site`: its period pages, found by
+// title prefix in the site's sitemap. -> summariseLedger() + who and where
+const summaryFor = async (site, title, text, { statuses = true, memo = memoFetch() } = {}) => {
+  const cmd = extractCommands(text || '')
+  const identity = parse.asSlug(title)
+  const map = await memo.sitemap(site)
+  const pages = periodPagesOf(map, title)
+  const got = await Promise.all(pages.map(p => memo.page(site, p.slug)))
+  const list = got.map((pg, i) => pg ? periodLedger(pg, pages[i]) : null).filter(Boolean)
+  if (statuses) {
+    await Promise.all(list.map(async p => {
+      try { p.status = await periodStatus(site, identity, p, memo) } catch { p.status = 'fail' }
+    }))
+  }
+  const recent = cmd.periods ? cmd.periods.recent : 10
+  return {
+    ...summariseLedger(list, { recent }),
+    title, slug: identity, site: normSite(site),
+    owner: cmd.owner, ownerName: ownerName(cmd.owner)
+  }
+}
+
+const runSummary = async ($item, item) => {
+  const model = await summaryFor(siteOf($item), titleOf($item), item.text || '')
+  const context = contextOf($item.parents('.page'))
+  $item.find('.timebank-summary').html(renderSummary(model, context))
+  const lines = model.periods.map(p => `${p.title}: ${(views.STATUS_PILL[p.status] || ['', p.status])[1]}`)
+  setBadge($item, model.status, [...lines, 'Click to open the Ledger Verification Tool beside this ledger'].join('\n'))
+  $item.find('.timebank-net').text(periods.signedHours(model.net, formatHours))
+  item.verified = { at: Date.now(), by: location.host, site: model.site, status: model.status, periods: model.periods.map(p => ({ slug: p.slug, status: p.status })) }
+  return model
+}
+
+const emitSummary = ($item, item, { check = true } = {}) => {
+  const { owner, periods: p } = extractCommands(item.text || '')
+  $item.append(`
+    <div style="margin:8px 0;font-family:sans-serif;font-size:14px">
+      <table style="width:100%;border-collapse:collapse;background:#fafafa;border:1px solid #ddd">
+        <thead><tr style="background:#e8e8e8">
+          <th style="padding:6px 8px;text-align:left;font-weight:600">Summary ledger<span class="timebank-badge pending" title="Checking the period ledgers…">${BADGE_TEXT.pending}</span></th>
+          <th style="padding:6px 8px;text-align:right;font-weight:600">Net <span class="timebank-net"></span></th>
+        </tr></thead>
+      </table>
+      <div class="timebank-summary" style="padding:4px 2px"><p style="margin:6px 0;color:#666">Finding the period pages titled <i>${escape(titleOf($item))} YYYY-MM</i>${owner ? ` of ${markup(`[[${owner.name}]]`)}` : ''}; the ${p.recent} most recent transactions…</p></div>
+    </div>`)
+  if (check) setTimeout(() => runSummary($item, item).catch(err => setBadge($item, 'fail', `Summary error: ${err.message || err}`)), 0)
+}
+
+// BALANCE on the owner's About page: the ledger named on the line, or the
+// summary ledger on this site whose OWNER line links this page.
+const findOwnedLedger = async (site, aboutSlug, memo) => {
+  const map = await memo.sitemap(site)
+  const ledgers = ledgersInSitemap(map)
+  for (const l of ledgers) {
+    const entry = (map || []).find(p => p.slug === l.slug)
+    if (!entry || !entry.links || !Object.prototype.hasOwnProperty.call(entry.links, aboutSlug)) continue
+    const page = await memo.page(site, l.slug)
+    const it = ledgerItemOf(page)
+    const c = it ? extractCommands(it.text || '') : {}
+    if (c.periods && c.owner && c.owner.slug === aboutSlug) return { title: page.title, text: it.text }
+  }
+  return null
+}
+
+const emitBalance = ($item, item) => {
+  $item.append('<div class="timebank-balance" style="margin:8px 0;font-family:sans-serif;font-size:14px;padding:6px 10px;border:1px solid #ddd;border-left:4px solid #3a9a5b;border-radius:4px;background:#fafafa"><p style="margin:6px 0;color:#666">Reading the ledger…</p></div>')
+  setTimeout(async () => {
+    const $out = $item.find('.timebank-balance')
+    try {
+      const site = siteOf($item)
+      const memo = memoFetch()
+      const ref = extractCommands(item.text || '').balance
+      let ledger = null
+      if (ref && ref !== true) {
+        const page = await memo.page(ref.external ? ref.site : site, ref.slug)
+        const it = ledgerItemOf(page)
+        if (page && it) ledger = { title: page.title, text: it.text, site: ref.external ? ref.site : site }
+      } else {
+        const found = await findOwnedLedger(site, slugOf($item), memo)
+        if (found) ledger = { ...found, site }
+      }
+      if (!ledger) return $out.html('<p style="margin:6px 0">No summary ledger found. Write <code>BALANCE: [[Your Ledger]]</code>, or give your summary ledger an <code>OWNER:</code> line linking this page.</p>')
+      const model = await summaryFor(ledger.site, ledger.title, ledger.text, { statuses: false, memo })
+      $out.html(renderBalance(model, contextOf($item.parents('.page'))))
+    } catch (err) {
+      $out.html(`<p style="margin:6px 0">The balance could not be read: ${escape(err.message || err)}</p>`)
+    }
+  }, 0)
+}
+
+// The index reports on the site of the page to its left (this page's own
+// site when nothing is to its left).
+const indexSubject = $item => {
+  const $left = $item.parents('.page').prev('.page')
+  const $page = $left.length ? $left : $item.parents('.page')
+  return { $page, site: siteOfPage($page), title: $left.length ? $left.find('h1').first().text().trim() : null }
+}
+
+const runIndex = async ($item, note) => {
+  const $out = $item.find('.timebank-index')
+  const { site, title } = indexSubject($item)
+  $out.html(`<p style="margin:6px 0;color:#666">Reading the sitemap of ${escape(site)}…</p>`)
+  const memo = memoFetch()
+  const map = await memo.sitemap(site)
+  if (!map) return $out.html(`<p style="margin:6px 0">The sitemap of ${escape(site)} could not be read.</p>`)
+  const bases = ledgersInSitemap(map)
+  const ledgers = await Promise.all(bases.map(async l => ({
+    title: l.title, slug: l.slug, site,
+    periods: (await Promise.all(l.periods.map(async p => {
+      const pg = await memo.page(site, p.slug)
+      return pg ? periodLedger(pg, p) : null
+    }))).filter(Boolean)
+  })))
+  const cands = indexCandidates(map, ledgers.map(l => l.slug))
+  const pages = await Promise.all(cands.map(p => memo.page(site, p.slug)))
+  const occasions = []
+  const skipped = []
+  pages.forEach((pg, i) => {
+    if (!pg) return
+    const facts = pageTransactions(pg, site, cands[i].slug)
+    if (facts.length) { occasions.push(...facts); return }
+    const it = ledgerItemOf(pg)
+    if (it && !extractCommands(it.text || '').periods) {
+      // a plain ledger: one page, one period (or none)
+      ledgers.push({ title: pg.title, slug: cands[i].slug, site, periods: [periodLedger(pg, { slug: cands[i].slug })] })
+    } else if (!(pg.story || []).some(x => x.type === 'timebank')) {
+      skipped.push(cands[i]) // an About page (BALANCE) or a ledger is not a stray
+    }
+  })
+  const rows = classifyOccasions(occasions, ledgers, site)
+  // parties whose ledger cannot be read: unknown
+  const refs = new Map()
+  for (const f of occasions) for (const r of [f.giver, f.receiver]) if (r && r.site && r.slug) refs.set(`${r.site}/${r.slug}`, r)
+  const unknown = []
+  await Promise.all([...refs.entries()].map(async ([id, r]) => {
+    if (sameSite(r.site, site) && ledgers.some(l => l.slug === r.slug)) return
+    const pg = await memo.page(r.site, r.slug)
+    if (!pg) unknown.push(id)
+  }))
+  const remote = !sameSite(site, location.host)
+  const context = contextOf($item.parents('.page'))
+  $out.html((note ? `<p style="margin:6px 0"><b>${escape(note)}</b></p>` : '') +
+    renderIndex({ site, rows, unknown: unknown.sort(), pages: new Set(occasions.map(f => f.page.slug)).size, skipped, of: title, remote }, context))
+  $item.data('timebankIndex', { site, rows, ledgers, remote })
+}
+
+const emitIndex = $item => {
+  $item.append('<div class="timebank-index" style="margin:8px 0;font-family:sans-serif;font-size:14px"><p style="margin:6px 0;color:#666">Looking for the site to the left…</p></div>')
+  setTimeout(() => runIndex($item).catch(err => $item.find('.timebank-index').html(`<p>The index failed: ${escape(err.message || err)}</p>`)), 0)
+}
+
+// Open the listed pages to the right of the index, in order, keeping them all.
+const openLineup = ($item, t, state, $out) => {
+  const seen = new Set()
+  const list = t.rows.filter(r => !state || r.state === state).map(r => r.facts.page).filter(p => {
+    if (seen.has(p.slug)) return false
+    seen.add(p.slug)
+    return true
+  })
+  if (!list.length) return $out.text('Nothing to open.')
+  const where = t.remote ? t.site : null
+  list.forEach((p, i) => wiki.doInternalLink(p.title || p.slug, i === 0 ? $item.parents('.page') : null, where))
+  $out.text(`Opened ${list.length} ${list.length === 1 ? 'page' : 'pages'} to the right.`)
+}
+
+const putAction = async (slug, action) => {
+  const res = await fetch(`/page/${slug}/action`, { method: 'PUT', body: new URLSearchParams({ action: JSON.stringify(action) }) })
+  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 120)}`)
+}
+
+const onLogOrphans = async ($item, t, $out) => {
+  if (t.remote) return $out.text(`Not saved: this index shows ${t.site} from ${location.host}. Open the Transactions Index on ${t.site} and log in there as its owner.`)
+  if (typeof window.isOwner === 'undefined' || !window.isOwner) {
+    return $out.text(`Not saved: this browser is not logged in as the owner of ${t.site}. Log in as the site owner, then log the orphans again.`)
+  }
+  const plan = orphanPlan(t.rows, t.site)
+  if (!plan.edits.length && !plan.creates.length) return $out.text('Nothing to log: the orphans here name no ledger on this site.')
+  let n = 0
+  for (const e of plan.edits) {
+    $out.text(`Writing ${e.lines.length} into ${e.title}…`)
+    const page = await (await fetch(`/${e.slug}.json`, { cache: 'no-store' })).json()
+    const it = (page.story || []).find(x => x.id === e.itemId)
+    if (!it) return $out.text(`Stopped: ${e.title} changed since the index was drawn; reload and try again.`)
+    await putAction(e.slug, { type: 'edit', id: it.id, item: { ...it, text: e.text }, date: Date.now() })
+    n += e.lines.length
+  }
+  for (const c of plan.creates) {
+    $out.text(`Creating ${c.title}…`)
+    const story = [
+      { type: 'timebank', id: Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10), text: c.text },
+      { type: 'markdown', id: Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10), text: 'A period ledger created by Log the orphans on the [[Transactions Index]]. See [[Time Transaction]].' }
+    ]
+    await putAction(c.slug, { type: 'create', item: { title: c.title, story }, date: Date.now() })
+    n += c.lines.length
+  }
+  ownSiteCache.clear()
+  await runIndex($item, `Logged ${n} ${n === 1 ? 'orphan' : 'orphans'}: ${plan.edits.length} period ${plan.edits.length === 1 ? 'ledger' : 'ledgers'} edited, ${plan.creates.length} created${plan.skipped.length ? `; ${plan.skipped.length} left (they name no ledger here)` : ''}.`)
+}
+
+const onIndexClick = ($item, e) => {
+  const $btn = $(e.currentTarget)
+  const action = $btn.attr('data-timebank-action')
+  e.preventDefault()
+  e.stopPropagation()
+  const t = $item.data('timebankIndex')
+  if (action === 'lineup') {
+    const $out = $item.find('[data-timebank-out="lineup"]')
+    if (!t) return $out.text('Still reading; try again in a moment.')
+    openLineup($item, t, $btn.attr('data-timebank-state') || null, $out)
+  } else if (action === 'log-orphans') {
+    const $out = $item.find('[data-timebank-out="log-orphans"]')
+    if (!t) return $out.text('Still reading; try again in a moment.')
+    if ($btn.prop('disabled')) return
+    $btn.prop('disabled', true)
+    onLogOrphans($item, t, $out).catch(err => $out.text(`Log the orphans failed: ${err.message || err}`)).finally(() => $btn.prop('disabled', false))
+  }
+}
+
 // --- Plugin ---
 
 const emit = ($item, item, { check = true } = {}) => {
   ensureStyle()
   listenForTransactions()
   if (isTool(item)) return emitTool($item)
+  const mode = modeOf(item)
+  if (mode === 'periods') return emitSummary($item, item, { check })
+  if (mode === 'index') return emitIndex($item, item)
+  if (mode === 'balance') return emitBalance($item, item)
   // Parse START/END commands — clear stale values if absent
   const dates = extractDates(item.text || '')
   if (dates.start) item.start = dates.start; else delete item.start
@@ -693,6 +978,18 @@ const bind = ($item, item) => {
     $item.on('click', 'button[data-timebank-action]', e => onToolClick($item, e))
     return $item
   }
+  const mode = modeOf(item)
+  if (mode === 'index') {
+    $item.on('click', 'button[data-timebank-action]', e => onIndexClick($item, e))
+    return $item.dblclick(() => wiki.textEditor($item, item))
+  }
+  if (mode === 'balance') return $item.dblclick(() => wiki.textEditor($item, item))
+  if (mode === 'periods') {
+    $item.on('click', '.timebank-badge', e => { e.stopPropagation(); e.preventDefault(); onBadgeClick($item, item) })
+    $item.on('dblclick', '.timebank-badge', e => e.stopPropagation())
+    $item.on('dblclick', 'a', e => e.stopPropagation())
+    return $item.dblclick(() => wiki.textEditor($item, item))
+  }
   $item.on('click', '.timebank-badge', e => {
     e.stopPropagation()
     e.preventDefault()
@@ -720,5 +1017,5 @@ if (typeof window !== 'undefined') {
 }
 
 export const timebank = typeof window == 'undefined'
-  ? { ...parse, ...verify, ...tool, ...txn, ...links }
+  ? { ...parse, ...verify, ...tool, ...txn, ...links, ...periods, ...views }
   : undefined

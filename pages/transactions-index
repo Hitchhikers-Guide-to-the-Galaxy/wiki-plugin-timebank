@@ -1,0 +1,97 @@
+{
+  "title": "Transactions Index",
+  "story": [
+    {
+      "type": "paragraph",
+      "id": "04b56736af4736ec",
+      "text": "Every Time Transaction page on the site of the page to the left, and whether a period ledger logs it. Open this page beside any page of a site \u2014 its About page, its ledger, its Welcome Visitors \u2014 and it reads that site's sitemap: each page linking Time Transaction, less the template, the topic page and the ledgers, with each occasion's date, parties and hours."
+    },
+    {
+      "type": "timebank",
+      "id": "b18cdf197c49b903",
+      "text": "INDEX"
+    },
+    {
+      "type": "markdown",
+      "id": "ff2d3fe8ee50bc83",
+      "text": "# The three states\n> Logged, awaiting or orphan."
+    },
+    {
+      "type": "markdown",
+      "id": "4b77272472158fb0",
+      "text": "**Logged**: the period ledger whose START and END hold the occasion's date has its line \u2014 the page link, and the day when the line is dated. **Awaiting**: it has no line yet, but it pulls the page (LINEUP), so Freeze on the [[Ledger Verification Tool]] logs it. **Orphan**: no period ledger holds its date, or the one that does is closed and has no line, or the page names no ledger on this site."
+    },
+    {
+      "type": "markdown",
+      "id": "0aab4bdd2fd998fc",
+      "text": "A page that records recurring work \u2014 the same work for the same person, again \u2014 holds one transaction item per occasion, and each occasion is listed on its own row. A party whose ledger cannot be read is flagged **unknown party**."
+    },
+    {
+      "type": "markdown",
+      "id": "80a65ac59b6b1a78",
+      "text": "# The buttons\n> Open as lineup, and Log the orphans."
+    },
+    {
+      "type": "markdown",
+      "id": "62465b573e3e461c",
+      "text": "**Open as lineup** opens the listed pages to the right of this one, in order, keeping them all, so they can be read side by side. **Log the orphans** writes each orphan's line into the period ledger that holds its date, or creates the period page when none does, then checks again. It saves through the site's own action route, so it needs this browser to be logged in as the owner of the site, and it refuses \u2014 saying why \u2014 when it is not, or when the site shown is another origin's."
+    },
+    {
+      "type": "markdown",
+      "id": "615d413683b5e5c2",
+      "text": "# See\n\n- [[About TimeBank Plugin]] \u2014 period ledgers, the summary, PERIODS, OWNER and BALANCE\n- [[About Transaction Plugin]] \u2014 the transaction item, one per occasion\n- [[Ledger Verification Tool]] \u2014 the check beside a ledger"
+    }
+  ],
+  "journal": [
+    {
+      "type": "create",
+      "item": {
+        "title": "Transactions Index",
+        "story": [
+          {
+            "type": "paragraph",
+            "id": "04b56736af4736ec",
+            "text": "Every Time Transaction page on the site of the page to the left, and whether a period ledger logs it. Open this page beside any page of a site \u2014 its About page, its ledger, its Welcome Visitors \u2014 and it reads that site's sitemap: each page linking Time Transaction, less the template, the topic page and the ledgers, with each occasion's date, parties and hours."
+          },
+          {
+            "type": "timebank",
+            "id": "b18cdf197c49b903",
+            "text": "INDEX"
+          },
+          {
+            "type": "markdown",
+            "id": "ff2d3fe8ee50bc83",
+            "text": "# The three states\n> Logged, awaiting or orphan."
+          },
+          {
+            "type": "markdown",
+            "id": "4b77272472158fb0",
+            "text": "**Logged**: the period ledger whose START and END hold the occasion's date has its line \u2014 the page link, and the day when the line is dated. **Awaiting**: it has no line yet, but it pulls the page (LINEUP), so Freeze on the [[Ledger Verification Tool]] logs it. **Orphan**: no period ledger holds its date, or the one that does is closed and has no line, or the page names no ledger on this site."
+          },
+          {
+            "type": "markdown",
+            "id": "0aab4bdd2fd998fc",
+            "text": "A page that records recurring work \u2014 the same work for the same person, again \u2014 holds one transaction item per occasion, and each occasion is listed on its own row. A party whose ledger cannot be read is flagged **unknown party**."
+          },
+          {
+            "type": "markdown",
+            "id": "80a65ac59b6b1a78",
+            "text": "# The buttons\n> Open as lineup, and Log the orphans."
+          },
+          {
+            "type": "markdown",
+            "id": "62465b573e3e461c",
+            "text": "**Open as lineup** opens the listed pages to the right of this one, in order, keeping them all, so they can be read side by side. **Log the orphans** writes each orphan's line into the period ledger that holds its date, or creates the period page when none does, then checks again. It saves through the site's own action route, so it needs this browser to be logged in as the owner of the site, and it refuses \u2014 saying why \u2014 when it is not, or when the site shown is another origin's."
+          },
+          {
+            "type": "markdown",
+            "id": "615d413683b5e5c2",
+            "text": "# See\n\n- [[About TimeBank Plugin]] \u2014 period ledgers, the summary, PERIODS, OWNER and BALANCE\n- [[About Transaction Plugin]] \u2014 the transaction item, one per occasion\n- [[Ledger Verification Tool]] \u2014 the check beside a ledger"
+          }
+        ]
+      },
+      "date": 1790369128267,
+      "provenance": "Authored by an AI agent \u2014 Claude Code (claude-opus-5-5) for Phase 11 of the Timebank Verification Plan, shipped in wiki-plugin-timebank 0.6.0."
+    }
+  ]
+}

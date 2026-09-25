@@ -138,6 +138,51 @@
     },
     {
       "type": "markdown",
+      "id": "c024403f477a3095",
+      "text": "# Periods and the Summary\n> One ledger page per month, and a summary that adds them up."
+    },
+    {
+      "type": "markdown",
+      "id": "3d42a399e0b9d7ee",
+      "text": "Years of transactions do not belong in one item. Keep a ledger page per month \u2014 **Alice's Ledger 2026-09**, with its own START, END, entries and badge \u2014 and a summary ledger, **Alice's Ledger**, whose item holds `OWNER: [[About Alice]]` and `PERIODS: 10`. PERIODS finds the period pages by title prefix in the site's sitemap and shows each period's badge and hours, the ten most recent transactions and the **net balance** \u2014 hours given less hours received on the lines written in the period ledgers. Its badge is the worst of the periods' badges: any fail is a fail, any partial a partial."
+    },
+    {
+      "type": "timebank",
+      "id": "18e308735f67d44d",
+      "text": "OWNER: [[About Alice]]\nPERIODS: 10\nNOTIFY: ntfy.sh/timebank-demo-david"
+    },
+    {
+      "type": "markdown",
+      "id": "1528e0b3bce00352",
+      "text": "The item above has no period pages on this site, so it says how to start one. The summary's title is the ledger's identity: transaction pages and other ledgers name Alice's Ledger, never a period page, and a period page matches as the ledger it belongs to. A counterparty that is a summary is read through its period pages overlapping the period being checked. A period ledger with LINEUP pulls only the transaction pages dated inside it."
+    },
+    {
+      "type": "markdown",
+      "id": "12eec31662d5240d",
+      "text": "# Names and Occasions\n> The work and the person, never the date."
+    },
+    {
+      "type": "markdown",
+      "id": "43f0f527dd0970ce",
+      "text": "A transaction page is named for the work and the person \u2014 Childcare for David \u2014 and its date lives in the transaction item's DATE line and a date item beside it. When the same work recurs for the same person the page recurs: one transaction item per occasion, each with its own date, and an occasion's identity is page plus item. A ledger line names an occasion by linking the page with the day first \u2014 `2026-09-10 [[Childcare for David]] for [http://david.localhost:4242/view/davids-ledger David's Ledger]: 4 hours`. Two lines pair by page, then by occasion: the same day when both are dated, else the same minutes; lines dated on different days never pair."
+    },
+    {
+      "type": "markdown",
+      "id": "8bdd652a54f3db36",
+      "text": "# Index and Balance\n> Every transaction page on a site, and the balance beside its owner."
+    },
+    {
+      "type": "markdown",
+      "id": "015f7bb8b32fc721",
+      "text": "The [[Transactions Index]] is a plugin page like the [[Ledger Verification Tool]]: its item holds INDEX, and for the site of the page to its left it lists every page linking Time Transaction \u2014 less the template, the topic and ledgers \u2014 one row per occasion with date, parties, hours and state: **logged** (a period ledger has its line), **awaiting** (the period ledger holding its date pulls it) or **orphan**. A party whose ledger cannot be read is flagged unknown. It opens the pages as a lineup, and Log the orphans writes their lines in for the site's owner."
+    },
+    {
+      "type": "markdown",
+      "id": "d3881620c73e8f5f",
+      "text": "On the owner's About page an item holding `BALANCE: [[Alice's Ledger]]` shows hours given, received and the net, read live from the period ledgers, with links to the ledger and the index. See the test bed: [http://alice.localhost:4242/view/about-alice/view/transactions-index About Alice beside the Transactions Index]."
+    },
+    {
+      "type": "markdown",
       "id": "b7d3f19e42a80c11",
       "text": "# Repositories\n\nSource on GitHub: https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank\n\nPackage on npm: https://www.npmjs.com/package/wiki-plugin-timebank"
     },
@@ -149,7 +194,7 @@
     {
       "type": "markdown",
       "id": "a1b2c3d4e5001002",
-      "text": "**Version:** 0.5.0\n\n**Built:** Thu, 24 Sep 2026 21:03:23 GMT\n\n**Change:** Thank You Invoice. `WATCH:` names sites a ledger watches; transaction pages there (and on the sites of the ledgers it names) that name it and that it does not carry show as *awaiting reconcile* on the badge, under the ledger and on the tool page, whose **Reconcile** opens them, forks them to the ledger's site with the wiki's own fork, freezes their lines in and checks again. The transaction item registers its parties' sites as neighbours. 0.4.0 added Time Transaction pages, LINEUP, Freeze and the tool page; 0.3.0 cross-site ledgers; 0.2.0 linked ledgers and the badge.\n\n**Source:** `~/Code/wiki-plugins/wiki-plugin-timebank/` (transaction package in `transaction/`)\n\n**Installed:** `~/.nvm/versions/node/v24.18.0/lib/node_modules/wiki/node_modules/wiki-plugin-timebank/` and `wiki-plugin-transaction` (laptop, dev symlinks) \u00b7 `/usr/lib/node_modules/wiki/node_modules/` (Pi5)"
+      "text": "**Version:** 0.6.0\n\n**Built:** Fri, 25 Sep 2026\n\n**Change:** Site organisation. Transaction pages are named for the work and the person, with the date in a date item; one page holds recurring work, one transaction item per occasion, and page plus item is an occasion's identity. Period ledgers (Alice's Ledger 2026-09) and a summary ledger with OWNER and PERIODS: net balance, most recent transactions, a badge that aggregates the periods. The Transactions Index plugin page (INDEX): logged, awaiting or orphan, Open as lineup, Log the orphans. BALANCE on the owner's About page."
     }
   ],
   "journal": [
@@ -667,6 +712,125 @@
       },
       "date": 1790287037296,
       "provenance": "Claude Code (claude-opus-5-5): 0.5.0 \u2014 WATCH, awaiting reconcile, Reconcile (Timebank Verification Plan Phase 8)"
+    },
+    {
+      "type": "add",
+      "id": "c024403f477a3095",
+      "item": {
+        "type": "markdown",
+        "id": "c024403f477a3095",
+        "text": "# Periods and the Summary\n> One ledger page per month, and a summary that adds them up."
+      },
+      "after": "2efaff09394e82fb",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "3d42a399e0b9d7ee",
+      "item": {
+        "type": "markdown",
+        "id": "3d42a399e0b9d7ee",
+        "text": "Years of transactions do not belong in one item. Keep a ledger page per month \u2014 **Alice's Ledger 2026-09**, with its own START, END, entries and badge \u2014 and a summary ledger, **Alice's Ledger**, whose item holds `OWNER: [[About Alice]]` and `PERIODS: 10`. PERIODS finds the period pages by title prefix in the site's sitemap and shows each period's badge and hours, the ten most recent transactions and the **net balance** \u2014 hours given less hours received on the lines written in the period ledgers. Its badge is the worst of the periods' badges: any fail is a fail, any partial a partial."
+      },
+      "after": "c024403f477a3095",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "18e308735f67d44d",
+      "item": {
+        "type": "timebank",
+        "id": "18e308735f67d44d",
+        "text": "OWNER: [[About Alice]]\nPERIODS: 10\nNOTIFY: ntfy.sh/timebank-demo-david"
+      },
+      "after": "3d42a399e0b9d7ee",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "1528e0b3bce00352",
+      "item": {
+        "type": "markdown",
+        "id": "1528e0b3bce00352",
+        "text": "The item above has no period pages on this site, so it says how to start one. The summary's title is the ledger's identity: transaction pages and other ledgers name Alice's Ledger, never a period page, and a period page matches as the ledger it belongs to. A counterparty that is a summary is read through its period pages overlapping the period being checked. A period ledger with LINEUP pulls only the transaction pages dated inside it."
+      },
+      "after": "18e308735f67d44d",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "12eec31662d5240d",
+      "item": {
+        "type": "markdown",
+        "id": "12eec31662d5240d",
+        "text": "# Names and Occasions\n> The work and the person, never the date."
+      },
+      "after": "1528e0b3bce00352",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "43f0f527dd0970ce",
+      "item": {
+        "type": "markdown",
+        "id": "43f0f527dd0970ce",
+        "text": "A transaction page is named for the work and the person \u2014 Childcare for David \u2014 and its date lives in the transaction item's DATE line and a date item beside it. When the same work recurs for the same person the page recurs: one transaction item per occasion, each with its own date, and an occasion's identity is page plus item. A ledger line names an occasion by linking the page with the day first \u2014 `2026-09-10 [[Childcare for David]] for [http://david.localhost:4242/view/davids-ledger David's Ledger]: 4 hours`. Two lines pair by page, then by occasion: the same day when both are dated, else the same minutes; lines dated on different days never pair."
+      },
+      "after": "12eec31662d5240d",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "8bdd652a54f3db36",
+      "item": {
+        "type": "markdown",
+        "id": "8bdd652a54f3db36",
+        "text": "# Index and Balance\n> Every transaction page on a site, and the balance beside its owner."
+      },
+      "after": "43f0f527dd0970ce",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "015f7bb8b32fc721",
+      "item": {
+        "type": "markdown",
+        "id": "015f7bb8b32fc721",
+        "text": "The [[Transactions Index]] is a plugin page like the [[Ledger Verification Tool]]: its item holds INDEX, and for the site of the page to its left it lists every page linking Time Transaction \u2014 less the template, the topic and ledgers \u2014 one row per occasion with date, parties, hours and state: **logged** (a period ledger has its line), **awaiting** (the period ledger holding its date pulls it) or **orphan**. A party whose ledger cannot be read is flagged unknown. It opens the pages as a lineup, and Log the orphans writes their lines in for the site's owner."
+      },
+      "after": "8bdd652a54f3db36",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "d3881620c73e8f5f",
+      "item": {
+        "type": "markdown",
+        "id": "d3881620c73e8f5f",
+        "text": "On the owner's About page an item holding `BALANCE: [[Alice's Ledger]]` shows hours given, received and the net, read live from the period ledgers, with links to the ledger and the index. See the test bed: [http://alice.localhost:4242/view/about-alice/view/transactions-index About Alice beside the Transactions Index]."
+      },
+      "after": "015f7bb8b32fc721",
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "edit",
+      "id": "a1b2c3d4e5001002",
+      "item": {
+        "type": "markdown",
+        "id": "a1b2c3d4e5001002",
+        "text": "**Version:** 0.6.0\n\n**Built:** Fri, 25 Sep 2026\n\n**Change:** Site organisation. Transaction pages are named for the work and the person, with the date in a date item; one page holds recurring work, one transaction item per occasion, and page plus item is an occasion's identity. Period ledgers (Alice's Ledger 2026-09) and a summary ledger with OWNER and PERIODS: net balance, most recent transactions, a badge that aggregates the periods. The Transactions Index plugin page (INDEX): logged, awaiting or orphan, Open as lineup, Log the orphans. BALANCE on the owner's About page."
+      },
+      "date": 1790370419332,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
     }
   ],
   "plugin": "timebank"

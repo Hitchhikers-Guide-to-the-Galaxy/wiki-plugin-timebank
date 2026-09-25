@@ -33,6 +33,21 @@
     },
     {
       "type": "markdown",
+      "id": "04d27fff86067296",
+      "text": "# One Page, Many Occasions\n> Recurring work, one transaction item each time."
+    },
+    {
+      "type": "markdown",
+      "id": "ed0e282646e4aafd",
+      "text": "Name the page for the work and the person \u2014 Childcare for David \u2014 never the date. Beside each transaction item put a date item holding the recorded day (`2026-09-10 Childcare for David`), so the page is a time-located event for the Timeline and Calendar plugins. When the same work is done again for the same person, add another date item and transaction item to the same page: each is an occasion, identified by the page plus the item. Ledgers pull and match each occasion on its own, by its date."
+    },
+    {
+      "type": "date",
+      "id": "1880b26d54e0058c",
+      "text": "2026-09-10 Childcare for David"
+    },
+    {
+      "type": "markdown",
       "id": "c3db3804b1d25459",
       "text": "# See\n\n- [[About TimeBank Plugin]] \u2014 ledgers, LINEUP, the badge and the Ledger Verification Tool\n- [[Time Transaction]] \u2014 what a transaction page is, where a site has one"
     }
@@ -82,6 +97,42 @@
       },
       "date": 1790174306466,
       "provenance": "Generated through a dialogue between David Bovill and Claude Code (claude-opus-5-5), session 2026-09-23 \u2014 wiki-plugin-transaction 0.4.0, Phase 7 of the Timebank Verification Plan."
+    },
+    {
+      "type": "add",
+      "id": "04d27fff86067296",
+      "item": {
+        "type": "markdown",
+        "id": "04d27fff86067296",
+        "text": "# One Page, Many Occasions\n> Recurring work, one transaction item each time."
+      },
+      "after": "ae1187708df3cc2a",
+      "date": 1790370419336,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "ed0e282646e4aafd",
+      "item": {
+        "type": "markdown",
+        "id": "ed0e282646e4aafd",
+        "text": "Name the page for the work and the person \u2014 Childcare for David \u2014 never the date. Beside each transaction item put a date item holding the recorded day (`2026-09-10 Childcare for David`), so the page is a time-located event for the Timeline and Calendar plugins. When the same work is done again for the same person, add another date item and transaction item to the same page: each is an occasion, identified by the page plus the item. Ledgers pull and match each occasion on its own, by its date."
+      },
+      "after": "04d27fff86067296",
+      "date": 1790370419336,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
+    },
+    {
+      "type": "add",
+      "id": "1880b26d54e0058c",
+      "item": {
+        "type": "date",
+        "id": "1880b26d54e0058c",
+        "text": "2026-09-10 Childcare for David"
+      },
+      "after": "ed0e282646e4aafd",
+      "date": 1790370419336,
+      "provenance": "Phase 11 of the Timebank Verification Plan \u2014 wiki-plugin-timebank 0.6.0, by Claude Code (claude-opus-5-5)."
     }
   ],
   "plugin": "transaction"

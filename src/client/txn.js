@@ -22,7 +22,7 @@
 // an Energy Invoice on the giver's. Those are awaiting reconcile; Reconcile
 // forks them to the ledger's site and freezes their lines in.
 
-import { asSlug, normSite, sameSite, parseDate, ledgerRefOf, ledgerUrl, parseEntries, isCommand, extractCommands } from './parse.js'
+import { asSlug, normSite, sameSite, parseDate, ledgerRefOf, ledgerUrl, parseEntries, isCommand, extractCommands, isoDay, sameDay } from './parse.js'
 
 export const TEMPLATE_TITLE = 'Time Transaction Template'
 export const TRANSACTION_TOPIC = 'time-transaction'
@@ -85,14 +85,30 @@ export const parseTransaction = (text, page = {}) => {
   return facts
 }
 
-// Every transaction item on a page served by `site`.
+// Every transaction item on a page served by `site`. A page that records
+// recurring work holds one item per occasion: each fact carries
+// occasion = { n, of } (1-based, in story order) — its identity is the page
+// plus the item.
 export const pageTransactions = (page, site, slug) => {
   const out = []
   for (const it of (page && page.story) || []) {
     if (it.type !== 'transaction') continue
     out.push(parseTransaction(it.text || '', { site, slug: slug || asSlug(page.title || ''), title: page.title, itemId: it.id }))
   }
+  out.forEach((f, i) => { f.occasion = { n: i + 1, of: out.length } })
   return out
+}
+
+// One occasion: its page (site-free: a fork keeps the slug and item ids) plus its item.
+export const occasionKey = f => `${f.page.slug}#${f.page.itemId || ''}`
+
+// A transaction dated inside a ledger period (both at day precision). With no
+// period every transaction is inside; with a period an undated one is not.
+export const inPeriod = (facts, period) => {
+  if (!period) return true
+  if (facts.date === null || facts.date === undefined) return false
+  const day = Math.floor(facts.date / 86400000)
+  return day >= Math.floor(period.start / 86400000) && day <= Math.floor(period.end / 86400000)
 }
 
 export const sameLedger = (a, b) => !!(a && b && a.slug === b.slug && sameSite(a.site, b.site))
@@ -116,7 +132,25 @@ export const entryLineFor = (facts, me) => {
   if (giving === receiving) return null
   const other = giving ? facts.receiver : facts.giver
   const page = { title: facts.page.title || facts.label, slug: facts.page.slug, site: facts.page.site }
-  return `${linkFrom(me.site, page)} ${giving ? 'for' : 'from'} ${linkFrom(me.site, other)}: ${minutesText(facts.minutes)}`
+  const day = facts.date === null || facts.date === undefined ? '' : `${isoDay(facts.date)} `
+  return `${day}${linkFrom(me.site, page)} ${giving ? 'for' : 'from'} ${linkFrom(me.site, other)}: ${minutesText(facts.minutes)}`
+}
+
+// Which written line holds a pulled entry's occasion. A line links the page
+// (or a fork of it: the same slug); a dated line holds only the occasion of
+// that day; an undated line holds any occasion of the page, preferring one of
+// the same minutes. Each written line holds one occasion: `used` records the
+// claimed lines. -> the written entry | null
+export const claimWritten = (written, e, used = new Set(), site) => {
+  const slug = e.txn && e.txn.slug
+  const date = e.facts ? e.facts.date : e.date
+  const minutes = e.facts ? e.facts.minutes : Math.round((e.time || 0) * 60)
+  const same = (written || []).filter(x => x.linked && x.txn && !used.has(x) && txnOf(x, site).slug === slug)
+  const pick = same.find(x => x.date !== null && x.date !== undefined && sameDay(x.date, date)) ||
+    same.find(x => (x.date === null || x.date === undefined) && Math.round(x.time * 60) === minutes) ||
+    same.find(x => x.date === null || x.date === undefined)
+  if (pick) used.add(pick)
+  return pick || null
 }
 
 // Resolve an entry's transaction ref against the site its ledger is on.
@@ -139,21 +173,25 @@ const dedupe = facts => {
 }
 
 // Gathered facts -> the entries they add to ledger `me`.
-//   written = the ledger's own parsed entries
+//   written = the ledger's own parsed entries · period = the ledger's
+//   START/END (only occasions dated inside it are pulled), or null
 // -> { pulled: entries to show (and freeze), frozen: written lines that already
-//      link the same page and agree, stale: [{ entry, written }] that disagree }
-export const pullEntries = (facts, me, written = []) => {
+//      hold the same occasion and agree, stale: [{ entry, written }] that disagree }
+export const pullEntries = (facts, me, written = [], period = null) => {
   const pulled = []
   const frozen = []
   const stale = []
+  const used = new Set()
   for (const f of dedupe(facts || [])) {
+    if (!inPeriod(f, period)) continue
     const line = entryLineFor(f, me)
     if (!line) continue
     const [entry] = parseEntries(line)
     if (!entry || !entry.linked) continue
     const e = { ...entry, pulled: true, facts: f, txn: { ...entry.txn, site: f.page.site } }
-    // a written line linking this page, or a fork of it (same slug), holds it
-    const w = written.find(x => x.linked && x.txn && txnOf(x, me.site).slug === e.txn.slug)
+    // a written line linking this page (or a fork of it: same slug) holds it —
+    // on a page of recurring work, the line of the same day
+    const w = claimWritten(written, e, used, me.site)
     if (!w) { pulled.push(e); continue }
     const agrees = w.direction === e.direction && Math.round(w.time * 60) === f.minutes
     if (agrees) frozen.push(w)
@@ -223,17 +261,28 @@ export const receiverSite = (entry, site) => entry.direction === 'gave'
   ? (entry.counterparty.external ? entry.counterparty.site : normSite(site))
   : normSite(site)
 
-// The title to offer for an entry with no transaction page:
-// "Gardening for Alice's Ledger" / "Repairs from Bob's Ledger".
+// The person a ledger belongs to, from its name: "Alice's Ledger" -> "Alice",
+// "David Ledger" -> "David"; any other name is returned as it is.
+export const personOf = name => {
+  const s = String(name || '').replace(/[[\]]/g, '').replace(/[’‘]/g, "'").trim()
+  const m = s.match(/^(.+?)(?:'s?)?\s+Ledger$/i)
+  return m ? m[1].trim() : s
+}
+
+// The title to offer for an entry with no transaction page: the work and the
+// counterparty, never a date — "Childcare for David", "Soup from Alice". The
+// date lives in the transaction item's DATE line and a date item on the page;
+// when the same work recurs for the same person the page recurs, one
+// transaction item per occasion.
 export const suggestTitle = entry => {
-  const who = String(entry.counterparty.name || entry.counterparty.slug).replace(/[[\]]/g, '')
+  const who = personOf(entry.counterparty.name || entry.counterparty.slug)
   const what = String(entry.label || 'Time').replace(/[[\]]/g, '').trim()
   return `${what} ${entry.direction === 'gave' ? 'for' : 'from'} ${who}`.replace(/\s+/g, ' ')
 }
 
 // Sitemap entries that may be transaction pages: pages that link the Time
 // Transaction topic page, as every page made from the template does.
-export const transactionCandidates = (sitemap, limit = 40) => (Array.isArray(sitemap) ? sitemap : [])
+export const transactionCandidates = (sitemap, limit = 400) => (Array.isArray(sitemap) ? sitemap : [])
   .filter(p => p && p.slug && p.slug !== asSlug(TEMPLATE_TITLE) && p.slug !== TRANSACTION_TOPIC &&
     p.links && Object.prototype.hasOwnProperty.call(p.links, TRANSACTION_TOPIC))
   .slice(0, limit)
@@ -263,11 +312,11 @@ export const watchedSites = (text, ownSite) => {
 //   facts: gathered from the watched sites · written: the ledger's parsed
 //   entries · pulled: entries already pulled by LINEUP
 // -> [entry with awaiting: true, facts]
-export const awaitingEntries = (facts, me, written = [], pulled = []) => {
-  const { pulled: implied } = pullEntries(facts, me, written)
+export const awaitingEntries = (facts, me, written = [], pulled = [], period = null) => {
+  const { pulled: implied } = pullEntries(facts, me, written, period)
   return implied
     .filter(e => !sameSite(e.facts.page.site, me.site))
-    .filter(e => !pulled.some(p => p.txn && p.txn.slug === e.txn.slug))
+    .filter(e => !pulled.some(p => p.facts && occasionKey(p.facts) === occasionKey(e.facts)))
     .map(e => ({ ...e, awaiting: true }))
 }
 

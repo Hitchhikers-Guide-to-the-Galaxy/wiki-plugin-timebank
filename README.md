@@ -82,6 +82,47 @@ An **Energy Invoice** is the same page from the giver's side: it is written on t
 
 The `transaction` item registers the giver's and receiver's sites as neighbours, so a Twin `WATCH` item on the page shows who has forked it — the receipt of the [Wiki Message](http://plan.ide.earth/view/wiki-message).
 
+## Names, occasions and periods (0.6.0)
+
+**A transaction page is named for the work and the person** — `Childcare for David`, `Soup from Alice` — never the date. The recorded date is the transaction item's `DATE:` line and a `date` item beside it (wiki-plugin-date); the journal keeps when the page was written. The Ledger Verification Tool offers new pages by this rule.
+
+**Recurring work recurs on one page.** When the same work is done again for the same person, the page gains another occasion: a `date` item and a `transaction` item of its own. An occasion's identity is **page plus item**. A ledger line names an occasion by linking the page with the day first:
+
+```
+2026-09-10 [[Childcare for David]] for [http://david.localhost:4242/view/davids-ledger David's Ledger]: 4 hours
+```
+
+- The matcher pairs two lines by page, then by occasion: the same day when both lines are dated, else the same minutes; then the same page on any day neither line contradicts. Lines dated on different days never pair.
+- A written line holds one occasion: a dated line the occasion of its day, an undated line one of the same minutes. Pulled lines (`LINEUP`) are always written dated.
+
+**Period ledgers and the summary.** A ledger page per month — `Alice's Ledger 2026-09`, with its own `START`, `END`, entries and badge — and a summary ledger, `Alice's Ledger`:
+
+```
+OWNER: [[About Alice]]
+PERIODS: 10
+NOTIFY: ntfy.sh/timebank-demo-david
+```
+
+- `PERIODS` (or `PERIODS: n`) finds the period pages by title prefix — `<summary title> YYYY-MM` — in the site's sitemap, and shows each period's badge and hours, the `n` most recent transactions (default 10) and the **net balance** across all periods: hours given less hours received on the lines written in the period ledgers.
+- Its badge aggregates the periods' badges, worst wins: any fail → fail, any partial → partial; periods with no linked entries do not count.
+- The summary's title is the ledger's identity. Transaction pages and other ledgers name `Alice's Ledger`, never a period page; a period page matches as the ledger it belongs to, and a counterparty that is a summary is read through its period pages overlapping this period.
+- A period ledger with `LINEUP` pulls only transaction pages dated inside its `START`..`END`; so does `WATCH`.
+- `OWNER: [[About Alice]]` names whose ledger it is.
+
+**Balance beside the owner.** A timebank item `BALANCE: [[Alice's Ledger]]` on the owner's About page (or bare `BALANCE`, which finds the summary whose `OWNER` links this page) shows hours given, received and the net, with links to the ledger and the Transactions Index.
+
+**Transactions Index** (a plugin page, `pages/transactions-index`, listed in `factory.json` `pages`; its timebank item holds `INDEX`). For the site of the page to its left it lists every sitemap page linking `time-transaction` — less the template, the topic page and ledgers — one row per occasion with its date, parties, hours and state:
+
+- **logged** — the period ledger whose `START`..`END` holds its date has its line
+- **awaiting** — that ledger has no line but pulls it (`LINEUP`): Freeze logs it
+- **orphan** — no period ledger holds its date, or the one that does is closed and has no line, or it names no ledger on this site
+
+A party whose ledger cannot be read is flagged **unknown party**. **Open as lineup** opens the listed pages (all, the orphans, or the awaiting) to the right of the index, keeping them all. **Log the orphans** writes each orphan's line into the period ledger that holds its date, or creates the period page, through the site's action route; it refuses, saying why, when the browser is not the owner or the site shown is another origin's.
+
+The report tool reads summary ledgers through their periods, takes the member's name from `OWNER`, writes a **Timebank Monthly Report YYYY-MM** per month beside the weekly ones, draws the total report's bars per month, and prints each summary ledger's logged net beside the report's net per person (the difference is what is not logged yet). `tools/timebank-sample.py` builds the laptop test bed: it renames the dated pages (see below), splits the ledgers into periods, adds the About pages, and generates June to September 2026 (seed 2026, rerunnable to the same bytes).
+
+**Renaming a page** follows wiki-client's own rename (editing a ghost page's title, then forking it): the page is re-created under the new slug with its journal carried over — the create's title rewritten — and a `fork` action naming the old title (`renamed: {from, slug}`); the old slug keeps a one-line `➜ Moved to [[New Title]]` page marked `"moved"`, and every ledger line and fork naming it is repointed.
+
 ## Ledger Verification Tool (0.4.0: a plugin page)
 
 A single click on the badge opens the **Ledger Verification Tool** beside the ledger. It is a plugin page (`pages/ledger-verification-tool`, listed in `factory.json` `pages`), served on every site of the farm, green. Its timebank item holds `TOOL`: on emit it finds the ledger on the page to its left, checks it and draws the report:
@@ -118,7 +159,7 @@ npm install
 npm run build
 ```
 
-The build step runs tests then bundles `src/client/timebank.js` (with `parse.js`, `verify.js`, `tool.js`, `txn.js`, `links.js` and `transaction.js`) → `client/timebank.js` via esbuild. `transaction/` is the wiki-plugin-transaction package; pack it with `npm pack ./transaction`.
+The build step runs tests then bundles `src/client/timebank.js` (with `parse.js`, `verify.js`, `tool.js`, `txn.js`, `links.js`, `periods.js`, `views.js` and `transaction.js`) → `client/timebank.js` via esbuild. `transaction/` is the wiki-plugin-transaction package; pack it with `npm pack ./transaction`.
 
 ## Install into Federated Wiki
 
@@ -132,7 +173,7 @@ Then restart your wiki server.
 
 ## Development
 
-Source lives in `src/client/`: `parse.js` (grammar and ledger addresses), `verify.js` (matching, sign-off and messages, pure), `txn.js` (transaction facts, pulled entries, freeze, pure), `tool.js` (the tool report and candidate finder, pure), `links.js` (anchors identical to wiki.resolveLinks, for markup drawn after emit), `transaction.js` (the transaction item) and `timebank.js` (browser layer). After editing, run `npm run build` to recompile. The `npm run about` script starts a local wiki server on port 3010 pointing at the plugin directory, which is useful for previewing the about page.
+Source lives in `src/client/`: `parse.js` (grammar and ledger addresses), `verify.js` (matching, sign-off and messages, pure), `txn.js` (transaction facts, pulled entries, freeze, pure), `tool.js` (the tool report and candidate finder, pure), `periods.js` (period ledgers, the summary, index classification and Log the orphans, pure), `views.js` (the summary, index and balance HTML, pure), `links.js` (anchors identical to wiki.resolveLinks, for markup drawn after emit), `transaction.js` (the transaction item) and `timebank.js` (browser layer). After editing, run `npm run build` to recompile. The `npm run about` script starts a local wiki server on port 3010 pointing at the plugin directory, which is useful for previewing the about page.
 
 ## License
 

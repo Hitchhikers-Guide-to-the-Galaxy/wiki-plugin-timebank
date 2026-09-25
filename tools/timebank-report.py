@@ -7,7 +7,14 @@ they WATCH and the sites of the ledgers they name; counts each transaction
 page once by its home site and slug; and writes, on the broker's site:
 
   Timebank Weekly Report <ISO week>   one per week with transactions
-  Timebank Report                     every week, the shares, the equity model
+  Timebank Monthly Report <YYYY-MM>   one per month with transactions (0.6.0)
+  Timebank Report                     every month and week, the shares, the equity model
+
+A known ledger may be a summary ledger (PERIODS): its entries are read from its
+period pages ("Alice's Ledger 2026-09"), found by title prefix in its site's
+sitemap, and its OWNER: [[About Alice]] line names the member ("Alice"). Its
+logged balance — given minus received over the period ledgers' written lines —
+is checked against the report's net per person and printed.
 
 Pages are reconciled in place with fedwiki-lib's Report: the script owns the
 rows and the items beneath them; a human owns where the rows sit, their ticks,
@@ -100,15 +107,36 @@ def known_ledgers(url: str) -> tuple[str, str, list[dict]]:
     return site, page.get("title", "Known Ledgers"), members
 
 
+def period_pages(site: str, page: dict) -> list[tuple[dict, dict]]:
+    """A summary ledger's period pages, read from its site: [(ref, page)]."""
+    sitemap = get_json(f"{scheme_for(site)}://{site}/system/sitemap.json")
+    out = []
+    for ref in tr.period_pages_of(sitemap, page.get("title")):
+        pg = fetch_page(site, ref["slug"])
+        if pg:
+            out.append((ref, pg))
+    return out
+
+
 def read_ledgers(members: list[dict]) -> tuple[list[dict], list[str]]:
     ledgers, sites = [], []
     add = lambda s: sites.append(tr.norm_site(s)) if s and not any(tr.same_site(s, x) for x in sites) else None  # noqa: E731
     for m in members:
         page = fetch_page(m["site"], m["slug"])
-        text = "\n".join(i.get("text", "") for i in (page or {}).get("story", []) if i.get("type") == "timebank")
-        entries = tr.ledger_entries(page, m["site"]) if page else []
+        pages = [page] if page else []
+        periods = []
+        if page and tr.is_summary(page):
+            got = period_pages(m["site"], page)
+            periods = [ref["title"] for ref, _ in got]
+            pages += [pg for _, pg in got]
+            owner = tr.owner_name(tr.extract_commands("\n".join(i.get("text", "") for i in page["story"] if i.get("type") == "timebank"))["owner"])
+            if owner:
+                m["member"] = owner
+        text = "\n".join(i.get("text", "") for pg in pages for i in pg.get("story", []) if i.get("type") == "timebank")
+        entries = [e for pg in pages for e in tr.ledger_entries(pg, m["site"])]
         cmd = tr.extract_commands(text)
-        ledgers.append({**m, "entries": entries, "reachable": bool(page), "lineup": cmd["lineup"], "watch": cmd["watch"], "text": text})
+        ledgers.append({**m, "entries": entries, "reachable": bool(page), "lineup": cmd["lineup"], "watch": cmd["watch"], "text": text,
+                        "periods": periods, "logged": tr.logged_balance(entries)})
         add(m["site"])
         for s in cmd["watch"]:
             add(s)
@@ -185,7 +213,7 @@ def state_counts(ts) -> str:
     c = {}
     for t in ts:
         c[t["state"]] = c.get(t["state"], 0) + 1
-    return ", ".join(f"{n} {s}" for s, n in sorted(c.items(), key=lambda x: ["verified", "in dialogue", "awaiting"].index(x[0])))
+    return ", ".join(f"{n} {s}" for s, n in sorted(c.items(), key=lambda x: ["verified", "in dialogue", "awaiting", "unknown party"].index(x[0])))
 
 
 def seed_neighbours(domain: str, slug: str, sites: list[str]) -> None:
@@ -208,6 +236,42 @@ def seed_neighbours(domain: str, slug: str, sites: list[str]) -> None:
 
 def weekly_title(week: str) -> str:
     return f"Timebank Weekly Report {week}"
+
+
+def monthly_title(month: str) -> str:
+    return f"Timebank Monthly Report {month}"
+
+
+def month_name(month: str) -> str:
+    return dt.date(int(month[:4]), int(month[5:]), 1).strftime("%B %Y")
+
+
+def write_monthly(domain, month, ts, members, broker, stamp, write):
+    s = tr.summarise(ts, members)
+    first, last = tr.month_bounds(month)
+    title = monthly_title(month)
+    weeks = sorted({tr.iso_week(t["facts"]["date"]) for t in ts})
+    lead = (f"The broker's report for {month_name(month)}: {s['count']} transactions, {tr.fmt_hours(s['total'])} given, "
+            f"{state_counts(ts)}. Broker: {broker}. Generated {stamp} by tools/timebank-report.py from the ledgers on "
+            f"[[Known Ledgers]] and their period ledgers for {month}; see the [[Timebank Report]] for every month.")
+    r = Report(domain, title, lead=lead, see=["Timebank Report", "Known Ledgers", "Broker Role"])
+    r.section("# People", "> Hours given and received, per member.")
+    r.section("# Weeks", "> The weekly reports this month touches.")
+    r.section("# Transactions", "> Every transaction occasion of the month, counted once by its home site.")
+    pie = tr.pie_svg([(m["member"], x["given"]) for m, x in zip(members, s["rows"])], f"Hours given, {month_name(month)}")
+    r.add("# People", "Known Ledgers", row("Known Ledgers", f"{len(members)} members", f"{tr.fmt_hours(s['total'])} given this month"),
+          detail=[people_table(s, f"Hours per member, {month}"),
+                  fedwiki.make_item(f"**Month's total:** {tr.fmt_hours(s['total'])} given and received across {s['count']} transactions — {state_counts(ts)}."),
+                  svg_item(pie, f"Who gave the hours in {month_name(month)}.")])
+    for week in weeks:
+        wts = [t for t in ts if tr.iso_week(t["facts"]["date"]) == week]
+        r.add("# Weeks", weekly_title(week), row(weekly_title(week), f"{len(wts)} transactions this month", state_counts(wts)))
+    r.add("# Transactions", "Time Transaction", row("Time Transaction", f"{s['count']} occasions", state_counts(ts)),
+          detail=[transactions_table(ts, members, f"Transactions, {month}")])
+    r.assets("report.json", {"month": month, "generated": stamp, "summary": s,
+                             "transactions": [{"home": t["home"], "slug": t["facts"]["page"]["slug"], "item": t["facts"]["page"].get("itemId"), "state": t["state"]} for t in ts]})
+    ch = r.commit(write=write, created_provenance=PROV)
+    return title, s, ch
 
 
 def human_day(d: dt.date) -> str:
@@ -242,35 +306,47 @@ def write_weekly(domain, week, ts, members, broker, stamp, write):
     return title, s, ch
 
 
-def write_total(domain, weeks, all_ts, members, broker, stamp, unpaged, write):
+def write_total(domain, weeks, all_ts, members, broker, stamp, unpaged, write, months=None, check=None):
     s = tr.summarise(all_ts, members)
     names = [m["member"] for m in members]
-    per_week = []
-    for week, ts in weeks.items():
-        ws = tr.summarise(ts, members)
-        per_week.append((week, [(r["member"], r["given"]) for r in ws["rows"]]))
-    span = f"{list(weeks)[0]} to {list(weeks)[-1]}" if weeks else "no weeks"
-    lead = (f"The broker's total report over ISO weeks {span}: {s['count']} transactions, {tr.fmt_hours(s['total'])} given, "
+    months = months or {}
+    per_month = []
+    for month, ts in months.items():
+        ms = tr.summarise(ts, members)
+        per_month.append((month, [(r["member"], r["given"]) for r in ms["rows"]]))
+    span = f"{month_name(list(months)[0])} to {month_name(list(months)[-1])}" if months else "no months"
+    lead = (f"The broker's total report, {span}: {s['count']} transactions, {tr.fmt_hours(s['total'])} given, "
             f"{state_counts(all_ts)}. Broker: {broker}. Generated {stamp} by tools/timebank-report.py from the ledgers on [[Known Ledgers]]. "
             f"The shares below feed the equity model: wiki computes, sheet models, wiki freezes.")
     r = Report(domain, "Timebank Report", lead=lead, see=["Known Ledgers", "Broker Role", "Timebank Reporting Choices"])
     r.section("# People", "> Hours given and received over every week, and each member's share.")
+    r.section("# Months", "> One monthly report per month.")
     r.section("# Weeks", "> One weekly report per ISO week.")
-    r.section("# Transactions", "> Every transaction page, counted once by its home site.")
-    bars = tr.bars_svg(per_week, names, "Hours given per ISO week")
+    r.section("# Ledgers", "> Each summary ledger's logged balance beside the report's net.")
+    r.section("# Transactions", "> Every transaction occasion, counted once by its home site.")
+    bars = tr.bars_svg(per_month, names, "Hours given per month")
     r.add("# People", "Known Ledgers", row("Known Ledgers", f"{len(members)} members", f"{tr.fmt_hours(s['total'])} given in all"),
           detail=[people_table(s, "Hours per member, all weeks"),
                   fedwiki.make_item(f"**Total:** {tr.fmt_hours(s['total'])} given and received across {s['count']} transactions — {state_counts(all_ts)}."),
-                  svg_item(bars, "Hours given each ISO week, stacked by member."),
+                  svg_item(bars, "Hours given each month, stacked by member."),
                   shares_table(s)])
+    for month, ts in months.items():
+        ms = tr.summarise(ts, members)
+        r.add("# Months", monthly_title(month), row(monthly_title(month), f"{ms['count']} transactions", f"{tr.fmt_hours(ms['total'])} given", state_counts(ts)))
     for week, ts in weeks.items():
         ws = tr.summarise(ts, members)
         r.add("# Weeks", weekly_title(week), row(weekly_title(week), f"{ws['count']} transactions", f"{tr.fmt_hours(ws['total'])} given", state_counts(ts)))
+    if check:
+        rows = [[c["member"], num(c["ledger"]), num(c["report"]), num(c["diff"]), c["periods"]] for c in check]
+        r.add("# Ledgers", "Summary ledgers", row("Summary ledgers", f"{len(check)} members", "logged net against report net"),
+              detail=[fedwiki.make_table(["Member", "Ledger net", "Report net", "Difference", "Periods"], rows,
+                                         caption="Logged balance (written lines in the period ledgers) against the report's net", layout="table"),
+                      fedwiki.make_item("A difference is what is not logged yet: transaction pages awaiting a line, orphans no period ledger holds, a side whose ledger is unknown — and ledger lines with no page, which the report cannot date.")])
     detail = [transactions_table(all_ts, members, "Every transaction, all weeks")]
     if unpaged:
         detail.append(fedwiki.make_item("Not counted — ledger lines with no transaction page, so no date and no week: " + "; ".join(unpaged) + "."))
     r.add("# Transactions", "Time Transaction", row("Time Transaction", f"{s['count']} pages", state_counts(all_ts)), detail=detail)
-    r.assets("report.json", {"weeks": list(weeks), "generated": stamp, "summary": s})
+    r.assets("report.json", {"months": list(months), "weeks": list(weeks), "generated": stamp, "summary": s, "ledger_check": check or []})
     ch = r.commit(write=write, created_provenance=PROV)
     return s, ch
 
@@ -395,26 +471,42 @@ def main() -> None:
     for t in ts:
         t["state"] = tr.state_of(t, ledgers)
     weeks = tr.by_week(ts)
+    months = tr.by_month(ts)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%-d %B %Y at %H:%M UTC")
     unpaged = unpaged_lines(ledgers)
 
     print(f"members {[m['member'] for m in members]}; sites read {sites}; {len(copies)} copies -> {len(ts)} transactions")
     for l in ledgers:
-        print(f"  {l['member']}: {'reachable' if l['reachable'] else 'UNREACHABLE'}, {len(l['entries'])} linked entries, watch {l['watch']}")
+        print(f"  {l['member']}: {'reachable' if l['reachable'] else 'UNREACHABLE'}, {len(l['entries'])} linked entries in "
+              f"{len(l['periods']) or 1} {'period ledgers' if l['periods'] else 'ledger'}, watch {l['watch']}")
+    for month, mts in months.items():
+        s = tr.summarise(mts, members)
+        print(f"  {month}: {s['count']} transactions, {tr.fmt_hours(s['total'])} given — " +
+              ", ".join(f"{r['member']} +{tr.fmt_hours(r['given'])}/-{tr.fmt_hours(r['received'])}" for r in s["rows"]) + f" — {state_counts(mts)}")
     for week, wts in weeks.items():
         s = tr.summarise(wts, members)
         print(f"  {week}: {s['count']} transactions, {tr.fmt_hours(s['total'])} given — " +
               ", ".join(f"{r['member']} +{tr.fmt_hours(r['given'])}/-{tr.fmt_hours(r['received'])}" for r in s["rows"]) + f" — {state_counts(wts)}")
     if a.json:
-        print(json.dumps({"weeks": {w: tr.summarise(x, members) for w, x in weeks.items()}, "total": tr.summarise(ts, members),
+        print(json.dumps({"months": {m: tr.summarise(x, members) for m, x in months.items()},
+                          "weeks": {w: tr.summarise(x, members) for w, x in weeks.items()}, "total": tr.summarise(ts, members),
                           "transactions": [{"home": t["home"], "slug": t["facts"]["page"]["slug"], "state": t["state"], "forks": t["forks"]} for t in ts]}, indent=1))
+    check = tr.ledger_check(ledgers, tr.summarise(ts, members))
+    print("  ledger check — summary ledger net (logged) against report net:")
+    for c in check:
+        print(f"    {c['member']}: ledger {num(c['ledger'])}h, report {num(c['report'])}h, difference {num(c['diff'])}h over {c['periods']} period ledgers")
     write = not a.dry_run
+    for month, mts in months.items():
+        title, _, ch = write_monthly(domain, month, mts, members, a.broker, stamp, write)
+        print(f"  {'wrote' if write else 'would write'} http://{broker_site}/view/{fedwiki.as_slug(title)}: {', '.join(ch) or 'unchanged'}")
+        if write:
+            seed_neighbours(domain, fedwiki.as_slug(title), [m["site"] for m in members if not tr.same_site(m["site"], broker_site)] + NEIGHBOURS_EXTRA)
     for week, wts in weeks.items():
         title, _, ch = write_weekly(domain, week, wts, members, a.broker, stamp, write)
         print(f"  {'wrote' if write else 'would write'} http://{broker_site}/view/{fedwiki.as_slug(title)}: {', '.join(ch) or 'unchanged'}")
         if write:
             seed_neighbours(domain, fedwiki.as_slug(title), [m["site"] for m in members if not tr.same_site(m["site"], broker_site)] + NEIGHBOURS_EXTRA)
-    total, ch = write_total(domain, weeks, ts, members, a.broker, stamp, unpaged, write)
+    total, ch = write_total(domain, weeks, ts, members, a.broker, stamp, unpaged, write, months=months, check=check)
     print(f"  {'wrote' if write else 'would write'} http://{broker_site}/view/timebank-report: {', '.join(ch) or 'unchanged'}")
     if write:
         seed_neighbours(domain, "timebank-report", [m["site"] for m in members if not tr.same_site(m["site"], broker_site)] + NEIGHBOURS_EXTRA)
