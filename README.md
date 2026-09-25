@@ -148,6 +148,17 @@ python3 -m unittest discover -s tools
 
 It writes, on the broker's site, a **Timebank Weekly Report YYYY-Www** per ISO week (people table, the week's total, an SVG pie of hours given, a Transactions table, a tickable review row per transaction) and a **Timebank Report** over all weeks (people table, an SVG bar per week, a Shares table, the Transactions table), reconciled in place with fedwiki-lib's `Report`: a human's arrangement, ticks and notes survive a rerun. Beside the total report it writes `assets/timebank-report/equity-model.xlsx` (Shares: member, hours given, multiplier, weighted hours, share, with formulas and cached values) and, once, a Model Plugin item freezing `Shares!A1:E(n+2)`. The transaction parser is a port of `src/client/txn.js`; `test/fixtures/transactions.json` is shared by `node --test` and the Python tests so the two cannot drift.
 
+## The Review Model (0.7.0)
+
+`python3 tools/timebank-report.py --review-model` also writes the broker's **Review Model** workbook, `assets/review-model/review-model.xlsx` on the broker's site (stdlib writer in `tools/review_model.py`; formulas are written with their cached values because the Model Plugin never evaluates a formula). Tabs: **Members**; **Plan** (Week, Member, Estimated hours, Tasks — the planning meeting's, kept as it is found; rows B{n}:D{n+2} per week); **Actual** (A:J every transaction with its Category and weighted hours, L:P weekly totals per member — imported, never edited); **Review** (Week, Member, Planned, Actual, Variance, Approved hours, Approved on, Approver; B{n}:H{n+2} per week); **Equity** (multipliers by category, four-week vesting, shares at `A15:E19` for three members, named `ReviewShares`); **Approved** (one dated row per member per approved week, appended once). It then refreezes, through `wiki-model-freeze`, the model items that read it: the Plan rows on each **Weekly Plan YYYY-Www** (made from the site's Weekly Plan Template), the Review rows under **# Planned against actual** on each weekly report, the shares on the total report, the **Review Board** and a **Mouse Bank** twin. An item whose figures have not moved keeps its text. It writes two feed pages whose first table the Table Plugin serves as CSV for a sheet's IMPORTDATA: `/plugin/table/timebank-transactions.csv` and `/plugin/table/timebank-weekly-totals.csv`.
+
+```bash
+python3 tools/timebank-report.py --plan 2026-W40 Alice 3 "Seed swap stall; soup"     # one Plan row, as a sheet edit
+python3 tools/timebank-report.py --approve 2026-W40 [--approved-on 2026-10-05] [--approver NAME]
+```
+
+`--approve` burns a week once only: it writes the approval into the week's REVIEW item and the Approved sheet, then refreezes; a second approval is refused before anything is written. A timebank item holding `REVIEW: 2026-W40` on the weekly report shows the week's frozen Review rows and an **Approve the week** button — owner only; logged out it says so and saves nothing — which writes the same `APPROVED: YYYY-MM-DD by Name` text; the tool burns it on its next run. A timebank item holding `BOARD` draws, in plain SVG, hours per member, planned against actual per week and the shares from the model items on its own page, with a Full screen button — no workbook and no network needed.
+
 ## Supported Time Formats
 
 `2 hours` · `1 hour` · `30 mins` · `45 minutes` · `1.5h` · `90m` · `2 hrs`

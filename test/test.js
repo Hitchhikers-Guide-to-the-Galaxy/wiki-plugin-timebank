@@ -221,7 +221,7 @@ describe('timebank 0.2.0', () => {
 
     test('extractCommands normalises NOTIFY urls', () => {
       const c = extractCommands('NOTIFY: ntfy.sh/timebank-david')
-      assert.deepEqual(c, { notify: 'https://ntfy.sh/timebank-david', lineup: false, tool: false, watch: [], owner: null, periods: null, index: false, balance: null })
+      assert.deepEqual(c, { notify: 'https://ntfy.sh/timebank-david', lineup: false, tool: false, watch: [], owner: null, periods: null, index: false, balance: null, review: null, board: false })
       assert.equal(extractCommands('NOTIFY: http://pi:4280/timebank').notify, 'http://pi:4280/timebank')
       assert.equal(extractCommands('Gardening: 1h').notify, null)
     })
@@ -1455,5 +1455,75 @@ describe('timebank 0.6.0 Transactions Index classification', () => {
     assert.ok(html.includes('unknown party'))
     assert.ok(html.includes('data-timebank-action="lineup"'))
     assert.ok(html.includes('Log the 4 orphans'))
+  })
+})
+
+describe('review and board (0.7.0)', () => {
+  const REVIEW_MODEL = [
+    'MODEL /assets/review-model/review-model.xlsx',
+    'SHEET Review',
+    'RANGE B14:H16',
+    'COLUMNS Member, Planned, Actual, Variance, Approved, Approved on, Approver',
+    'REVISION sha256:abc 2026-09-25T12:00Z',
+    'CAPTION Planned against actual for 2026-W40, frozen from the Review tab of the Review Model',
+    'LAYOUT table',
+    '',
+    '| Member | Planned | Actual | Variance | Approved | Approved on | Approver |',
+    '|---|---|---|---|---|---|---|',
+    '| Alice | 3.0 | 4.5 | 1.5 |  |  |  |',
+    '| Bob | 3.0 | 2.0 | -1.0 | 2.5 |  |  |',
+    '| David | 3.0 | 0.0 | -3.0 |  |  |  |'
+  ].join('\n')
+
+  test('REVIEW and BOARD are commands and modes', () => {
+    assert.equal(timebank.extractCommands('REVIEW: 2026-w40').review, '2026-W40')
+    assert.equal(timebank.extractCommands('BOARD').board, true)
+    assert.equal(timebank.extractCommands('Gardening for [[Bob]]: 2 hours').review, null)
+  })
+
+  test('a model item\'s frozen table is read from its text', () => {
+    const m = timebank.modelOf(REVIEW_MODEL)
+    assert.equal(m.sheet, 'Review')
+    assert.equal(m.range, 'B14:H16')
+    assert.match(m.caption, /2026-W40/)
+    assert.deepEqual(m.columns.slice(0, 3), ['Member', 'Planned', 'Actual'])
+    assert.equal(m.rows.length, 3)
+  })
+
+  test('Approve takes the Approved column where the meeting filled it, else the hours given', () => {
+    const rows = timebank.reviewRows(timebank.modelOf(REVIEW_MODEL))
+    assert.deepEqual(timebank.hoursToApprove(rows), [['Alice', 4.5], ['Bob', 2.5], ['David', 0]])
+  })
+
+  test('approval text round-trips, and the Python tool writes the same grammar', () => {
+    const text = timebank.approvalText('2026-W40', '2026-10-05', 'David Bovill', [['Alice', 4.5], ['Bob', 1], ['David', 0]])
+    assert.match(text, /^REVIEW: 2026-W40\nAPPROVED: 2026-10-05 by David Bovill\nAlice: 4.5 hours\nBob: 1 hour\nDavid: 0 hours\n/)
+    const r = timebank.parseReview(text)
+    assert.equal(r.week, '2026-W40')
+    assert.deepEqual(r.approved, { on: '2026-10-05', by: 'David Bovill' })
+    assert.deepEqual(r.hours, [['Alice', 4.5], ['Bob', 1], ['David', 0]])
+    assert.equal(timebank.parseReview('REVIEW: 2026-W40\nApprove the week once the meeting agrees.').approved, null)
+  })
+
+  test('the board gathers weeks, members and shares from the frozen tables', () => {
+    const all = timebank.modelOf([
+      'SHEET Review', 'RANGE A1:E7', '',
+      '| Week | Member | Planned | Actual | Variance |', '|---|---|---|---|---|',
+      '| 2026-W39 | Alice | 5.0 | 7.0 | 2.0 |', '| 2026-W39 | Bob | 4.0 | 5.5 | 1.5 |',
+      '| 2026-W40 | Alice | 3.0 | 4.5 | 1.5 |', '| 2026-W40 | Bob | 3.0 | 2.0 | -1.0 |'
+    ].join('\n'))
+    const shares = timebank.modelOf([
+      'SHEET Equity', 'RANGE A15:E18', '',
+      '| Member | Approved hours | Weighted hours | Vested hours | Share |', '|---|---|---|---|---|',
+      '| Alice | 11.5 | 12.00 | 6.00 | 60.0% |', '| Bob | 7.5 | 8.00 | 4.00 | 40.0% |', '| Total | 19.0 | 20.00 | 10.00 | 100.0% |'
+    ].join('\n'))
+    const d = timebank.boardData([all, shares])
+    assert.deepEqual(d.weeks.map(w => w.week), ['2026-W39', '2026-W40'])
+    assert.deepEqual(d.perMember, [{ member: 'Alice', planned: 8, actual: 11.5 }, { member: 'Bob', planned: 7, actual: 7.5 }])
+    assert.deepEqual(d.share, [{ member: 'Alice', share: 60 }, { member: 'Bob', share: 40 }])
+    const svg = timebank.plannedActualSvg('P', d.weeks, ['Alice', 'Bob'])
+    assert.match(svg, /^<svg/)
+    assert.match(svg, /Alice, 2026-W40: 4.5h given/)
+    assert.doesNotMatch(timebank.barsSvg('S <x>', [{ label: 'A&B', value: 1 }]), /<x>|A&B/)
   })
 })

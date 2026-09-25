@@ -30,6 +30,7 @@ import * as txn from './txn.js'
 import * as links from './links.js'
 import * as periods from './periods.js'
 import * as views from './views.js'
+import * as review from './review.js'
 import { transactionPlugin } from './transaction.js'
 
 const {
@@ -46,6 +47,7 @@ const {
 } = periods
 const { renderSummary, renderBalance, renderIndex } = views
 const { periodOf } = verify
+const { parseReview, approvalText, modelOf, reviewRows, hoursToApprove, boardData, barsSvg, plannedActualSvg, PALETTE } = review
 
 // --- Markup ---
 
@@ -406,7 +408,7 @@ const onBadgeClick = ($item, item) => {
 const isTool = item => extractCommands((item && item.text) || '').tool
 const modeOf = item => {
   const c = extractCommands((item && item.text) || '')
-  return c.tool ? 'tool' : c.index ? 'index' : c.balance ? 'balance' : c.periods ? 'periods' : 'ledger'
+  return c.tool ? 'tool' : c.index ? 'index' : c.balance ? 'balance' : c.review ? 'review' : c.board ? 'board' : c.periods ? 'periods' : 'ledger'
 }
 
 // The ledger on the page immediately to the tool's left.
@@ -910,6 +912,110 @@ const onIndexClick = ($item, e) => {
   }
 }
 
+// --- Weekly review (REVIEW) and the Review Board (BOARD) — 0.7.0 ---
+
+// The model items on the same page, as frozen tables.
+const modelsOnPage = $item => $item.parents('.page').find('.item.model').toArray()
+  .map(el => { const it = $(el).data('item'); return it ? { ...modelOf(it.text), id: it.id } : null })
+  .filter(Boolean)
+
+const reviewModelFor = ($item, week) => {
+  const ms = modelsOnPage($item).filter(m => m.sheet === 'Review')
+  return ms.find(m => m.caption && m.caption.includes(week)) || ms[0] || null
+}
+
+const todayIso = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const drawReview = ($item, item, note = '') => {
+  const r = parseReview(item.text || '')
+  const model = reviewModelFor($item, r.week)
+  const rows = model ? reviewRows(model) : []
+  const $out = $item.find('.timebank-review')
+  const head = `<p style="margin:4px 0;font-weight:600">Review of ${escape(r.week || 'this week')}</p>`
+  let body
+  if (r.approved) {
+    const list = r.hours.map(([m, h]) => `${escape(m)} ${formatHours(h)}`).join(', ')
+    body = `<p style="margin:4px 0">Approved on ${escape(r.approved.on)} by ${escape(r.approved.by)}: ${list || 'no hours'}. The week is burned; the report tool writes these hours into the Review Model's Approved sheet once and refreezes the figures above.</p>`
+  } else if (!rows.length) {
+    body = '<p style="margin:4px 0">No Review figures are frozen on this page yet: the report tool places a model item reading the Review tab for this week above this one.</p>'
+  } else {
+    const list = hoursToApprove(rows).map(([m, h]) => `${escape(m)} ${formatHours(h)}`).join(', ')
+    body = `<p style="margin:4px 0">Approving burns these hours to dynamic equity, once only: ${list}.</p>` +
+      '<p style="margin:4px 0"><button data-timebank-action="approve">Approve the week</button> <span data-timebank-out="approve" style="color:#555"></span></p>'
+  }
+  $out.html(head + body + (note ? `<p style="margin:4px 0;color:#555">${escape(note)}</p>` : ''))
+}
+
+const emitReview = ($item, item) => {
+  $item.append('<div class="timebank-review" style="margin:8px 0;font-family:sans-serif;font-size:14px;padding:6px 10px;border:1px solid #ddd;border-left:4px solid #d9822b;border-radius:4px;background:#fafafa"><p style="margin:6px 0;color:#666">Reading the review…</p></div>')
+  // the model item above may not be drawn yet: wait a tick for the page
+  setTimeout(() => drawReview($item, item), 0)
+}
+
+const onApprove = async ($item, item, $out) => {
+  const r = parseReview(item.text || '')
+  if (r.approved) return $out.text(`Already approved on ${r.approved.on} by ${r.approved.by}: a week is burned once only.`)
+  const site = siteOf($item)
+  const remote = $item.parents('.page').data('site')
+  if (remote && remote !== 'origin' && remote !== 'view' && remote !== 'local' && !sameSite(remote, location.host)) {
+    return $out.text(`Not saved: this copy of the report comes from ${remote}. Open it on ${remote} and log in there as its owner to approve.`)
+  }
+  if (typeof window.isOwner === 'undefined' || !window.isOwner) {
+    return $out.text(`Not saved: this browser is not logged in as the owner of ${site}. Log in as the site owner, then approve again. Nothing was written.`)
+  }
+  const model = reviewModelFor($item, r.week)
+  const rows = model ? reviewRows(model) : []
+  if (!rows.length) return $out.text('Not saved: no Review figures are frozen on this page to approve.')
+  const by = (typeof window.ownerName === 'string' && window.ownerName) || 'the site owner'
+  item.text = approvalText(r.week, todayIso(), by, hoursToApprove(rows))
+  const $page = $item.parents('.page:first')
+  wiki.pageHandler.put($page, { type: 'edit', id: item.id, item })
+  const saved = await confirmSaved(slugOf($item), item)
+  drawReview($item, item, saved
+    ? 'Approved and saved to the page journal. Run the report tool (--review-model) to burn the hours into the workbook and refreeze.'
+    : 'Changed in this browser only: the server did not confirm the save. Log in as the site owner and approve again.')
+}
+
+const drawBoard = $item => {
+  const data = boardData(modelsOnPage($item))
+  const $out = $item.find('.timebank-board-charts')
+  if (!data.weeks.length && !data.share.length) {
+    return $out.html('<p style="margin:6px 0">No frozen figures on this page yet: the board draws the model items that freeze the Review and Equity tabs of the Review Model.</p>')
+  }
+  const members = data.perMember.map(p => p.member)
+  const colour = m => PALETTE[Math.max(0, members.indexOf(m)) % PALETTE.length]
+  const weeks = data.weeks.map(w => w.week)
+  const span = weeks.length ? `${weeks[0]} to ${weeks[weeks.length - 1]}` : ''
+  const parts = [
+    barsSvg(`Hours given per member, ${span}`, data.perMember.map(p => ({ label: p.member, value: p.actual, color: colour(p.member) }))),
+    plannedActualSvg('Planned against actual, per week', data.weeks, members),
+    data.share.length ? barsSvg('Shares of dynamic equity', data.share.map(s => ({ label: s.member, value: s.share, color: colour(s.member) })), { unit: '%' }) : ''
+  ]
+  $out.html(parts.filter(Boolean).map(p => `<div style="margin:10px 0">${p}</div>`).join(''))
+}
+
+const emitBoard = $item => {
+  $item.append('<div class="timebank-board" style="margin:8px 0;font-family:sans-serif;font-size:14px;background:#fff">' +
+    '<p style="margin:4px 0"><button data-timebank-action="fullscreen">Full screen</button> <span style="color:#666">drawn from the frozen figures on this page — no workbook, no network</span></p>' +
+    '<div class="timebank-board-charts"><p style="margin:6px 0;color:#666">Drawing…</p></div></div>')
+  setTimeout(() => drawBoard($item), 0)
+}
+
+const onBoardClick = ($item, e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  const el = $item.find('.timebank-board')[0]
+  if (!el) return
+  if (document.fullscreenElement) return document.exitFullscreen()
+  el.style.padding = '24px'
+  const done = () => { if (!document.fullscreenElement) el.style.padding = '' }
+  document.addEventListener('fullscreenchange', done, { once: true })
+  if (el.requestFullscreen) el.requestFullscreen().catch(() => {})
+}
+
 // --- Plugin ---
 
 const emit = ($item, item, { check = true } = {}) => {
@@ -920,6 +1026,8 @@ const emit = ($item, item, { check = true } = {}) => {
   if (mode === 'periods') return emitSummary($item, item, { check })
   if (mode === 'index') return emitIndex($item, item)
   if (mode === 'balance') return emitBalance($item, item)
+  if (mode === 'review') return emitReview($item, item)
+  if (mode === 'board') return emitBoard($item, item)
   // Parse START/END commands — clear stale values if absent
   const dates = extractDates(item.text || '')
   if (dates.start) item.start = dates.start; else delete item.start
@@ -984,6 +1092,22 @@ const bind = ($item, item) => {
     return $item.dblclick(() => wiki.textEditor($item, item))
   }
   if (mode === 'balance') return $item.dblclick(() => wiki.textEditor($item, item))
+  if (mode === 'review') {
+    $item.on('click', 'button[data-timebank-action="approve"]', e => {
+      e.preventDefault()
+      e.stopPropagation()
+      const $btn = $(e.currentTarget)
+      const $out = $item.find('[data-timebank-out="approve"]')
+      if ($btn.prop('disabled')) return
+      $btn.prop('disabled', true)
+      onApprove($item, item, $out).catch(err => $out.text(`Approve failed: ${err.message || err}`)).finally(() => $btn.prop('disabled', false))
+    })
+    return $item.dblclick(() => wiki.textEditor($item, item))
+  }
+  if (mode === 'board') {
+    $item.on('click', 'button[data-timebank-action="fullscreen"]', e => onBoardClick($item, e))
+    return $item.dblclick(() => wiki.textEditor($item, item))
+  }
   if (mode === 'periods') {
     $item.on('click', '.timebank-badge', e => { e.stopPropagation(); e.preventDefault(); onBadgeClick($item, item) })
     $item.on('dblclick', '.timebank-badge', e => e.stopPropagation())
@@ -1017,5 +1141,5 @@ if (typeof window !== 'undefined') {
 }
 
 export const timebank = typeof window == 'undefined'
-  ? { ...parse, ...verify, ...tool, ...txn, ...links, ...periods, ...views }
+  ? { ...parse, ...verify, ...tool, ...txn, ...links, ...periods, ...views, ...review }
   : undefined

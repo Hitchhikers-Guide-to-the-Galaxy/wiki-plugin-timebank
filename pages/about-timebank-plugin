@@ -39,7 +39,7 @@
     {
       "type": "table",
       "id": "c1cecc47bb6f159a",
-      "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic the tool page's Send verification message button posts to; https unless you write http:// |\n| LINEUP | LINEUP | Pull entries from Time Transaction pages to the left in the lineup and on this site that name this ledger, marked as pulled (thaw) |\n| WATCH: | WATCH: ledger.timebank.private.fish | Sites this ledger watches for incoming Time Transaction pages that name it \u2014 a thank-you written on the receiver's site; their hours show as awaiting reconcile |\n| TOOL | TOOL | Makes the item the Ledger Verification Tool's report: it checks the ledger on the page to its left |"
+      "text": "CAPTION Commands are never shown as entries or caption\n\n| Command | Example | What it does |\n|---|---|---|\n| START: | START: 1 September 2026 | Start of the period |\n| END: | END: 7 September 2026 | End of the period, shown as the column header |\n| NOTIFY: | NOTIFY: ntfy.sh/timebank-david | The ntfy topic the tool page's Send verification message button posts to; https unless you write http:// |\n| LINEUP | LINEUP | Pull entries from Time Transaction pages to the left in the lineup and on this site that name this ledger, marked as pulled (thaw) |\n| WATCH: | WATCH: ledger.timebank.private.fish | Sites this ledger watches for incoming Time Transaction pages that name it \u2014 a thank-you written on the receiver's site; their hours show as awaiting reconcile |\n| TOOL | TOOL | Makes the item the Ledger Verification Tool's report: it checks the ledger on the page to its left |\n| REVIEW: | REVIEW: 2026-W40 | On a weekly report: the week's frozen Review rows and an owner-only Approve button that writes APPROVED: date by name once (0.7.0) |\n| BOARD | BOARD | The Review Board: draws hours per member, planned against actual and the shares from the model items on its page, offline (0.7.0) |"
     },
     {
       "type": "markdown",
@@ -183,6 +183,16 @@
     },
     {
       "type": "markdown",
+      "id": "fb17c6710a3875d0",
+      "text": "# Review and Board\n> The week approved once, and the picture for the room."
+    },
+    {
+      "type": "markdown",
+      "id": "85200a846f4c71fc",
+      "text": "On a weekly report a timebank item holding `REVIEW: 2026-W40` reads the model item above it that freezes the week's rows of the Review Model's Review tab \u2014 planned, actual, variance \u2014 and offers **Approve the week**. Only the site owner can approve; logged out, it says so and saves nothing. Approving writes `APPROVED: 2026-10-05 by David Bovill` and each member's hours into the item, once; the broker's report tool burns them into the workbook's Approved sheet and refreezes. An item holding `BOARD` draws the [[Review Board]] from the model items on its own page: hours per member, planned against actual per week, and the shares \u2014 plain SVG, so the room needs no network."
+    },
+    {
+      "type": "markdown",
       "id": "b7d3f19e42a80c11",
       "text": "# Repositories\n\nSource on GitHub: https://github.com/Hitchhikers-Guide-to-the-Galaxy/wiki-plugin-timebank\n\nPackage on npm: https://www.npmjs.com/package/wiki-plugin-timebank"
     },
@@ -194,7 +204,7 @@
     {
       "type": "markdown",
       "id": "a1b2c3d4e5001002",
-      "text": "**Version:** 0.6.0\n\n**Built:** Fri, 25 Sep 2026\n\n**Change:** Site organisation. Transaction pages are named for the work and the person, with the date in a date item; one page holds recurring work, one transaction item per occasion, and page plus item is an occasion's identity. Period ledgers (Alice's Ledger 2026-09) and a summary ledger with OWNER and PERIODS: net balance, most recent transactions, a badge that aggregates the periods. The Transactions Index plugin page (INDEX): logged, awaiting or orphan, Open as lineup, Log the orphans. BALANCE on the owner's About page."
+      "text": "**Version:** 0.7.0\n\n**Built:** Fri, 25 Sep 2026\n\n**Change:** The Review Model. REVIEW mode on a weekly report \u2014 the week's planned against actual, frozen from the Review Model by the Model Plugin, and an owner-only Approve that burns the week once; BOARD mode draws the Review Board from the frozen figures on its page, offline, with a Full screen button. The broker's tool gains --review-model, --plan and --approve and writes the workbook with cached values."
     }
   ],
   "journal": [

@@ -28,6 +28,9 @@
 //                                           recent transactions and the net balance (0.6.0)
 //   INDEX                                 — this item is the Transactions Index (0.6.0)
 //   BALANCE | BALANCE: [[Alice's Ledger]] — the owner's balance, on their About page (0.6.0)
+//   REVIEW: 2026-W40                      — approve a week on its weekly report: reads the
+//                                           model item freezing the Review tab (0.7.0; review.js)
+//   BOARD                                 — the Review Board: draws the model items on its page (0.7.0)
 //   Admin tasks                           — note entry (no time, shown in table)
 //   Any prose sentence.                   — caption text (shown below table)
 
@@ -197,7 +200,7 @@ export const parseWatch = value => String(value || '')
   .filter(Boolean)
 
 // -> { notify: url|null, lineup: bool, tool: bool, watch: [site], owner: ref|null,
-//      periods: { recent }|null, index: bool, balance: ref|true|null }
+//      periods: { recent }|null, index: bool, balance: ref|true|null, review: week|null, board: bool }
 export const extractCommands = text => {
   let notify = null
   let lineup = false
@@ -206,6 +209,8 @@ export const extractCommands = text => {
   let periods = null
   let index = false
   let balance = null
+  let review = null
+  let board = false
   const watch = []
   lines(text).forEach(line => {
     const o = line.match(/^OWNER\s*:\s*(.+)$/i)
@@ -215,6 +220,9 @@ export const extractCommands = text => {
     const b = line.match(/^BALANCE(?:\s*:\s*(\[.*\]))?\s*$/i)
     if (b) balance = (b[1] && ledgerRefOf(b[1])) || true
     if (/^INDEX$/i.test(line)) index = true
+    const r = line.match(/^REVIEW\s*:\s*(\d{4}-W\d{2})\s*$/i)
+    if (r) review = r[1].toUpperCase()
+    if (/^BOARD$/i.test(line)) board = true
     const m = line.match(/^NOTIFY\s*:\s*(.+)$/i)
     if (m) notify = normaliseNotify(m[1])
     const w = line.match(/^WATCH\s*:\s*(.*)$/i)
@@ -222,7 +230,7 @@ export const extractCommands = text => {
     if (/^LINEUP$/i.test(line)) lineup = true
     if (/^TOOL$/i.test(line)) tool = true
   })
-  return { notify, lineup, tool, watch, owner, periods, index, balance }
+  return { notify, lineup, tool, watch, owner, periods, index, balance, review, board }
 }
 
 // A ledger named by a link token: [[Name]] is a ledger on `site` (the site the
