@@ -1,6 +1,7 @@
 import { timebank } from '../src/client/timebank.js'
 import { test, describe } from 'node:test'
 import assert from 'node:assert'
+import { readFileSync } from 'node:fs'
 
 const { parseEntries, extractDates, parseDate, totalHours, formatHours, formatDate, formatCaption } = timebank
 
@@ -1207,5 +1208,21 @@ describe('timebank 0.5.0 Thank You Invoice: watched sites, awaiting, Reconcile',
       assert.ok(html.includes('1 transaction page on watched sites names this ledger'))
       assert.ok(!renderReport({ result }).includes('Awaiting reconcile'))
     })
+  })
+})
+
+describe('shared fixtures for the broker report tool (tools/timebank_report.py)', () => {
+  const fixtures = JSON.parse(readFileSync(new URL('./fixtures/transactions.json', import.meta.url), 'utf8'))
+  const { parseTransaction, parseMinutes, parseDate, parseLedgerUrl, sameSite } = timebank
+  for (const c of fixtures.cases) {
+    test(`parseTransaction: ${c.name}`, () => {
+      assert.deepEqual(JSON.parse(JSON.stringify(parseTransaction(c.text, c.page))), c.expect)
+    })
+  }
+  test('minutes, dates, ledger addresses and sites', () => {
+    for (const [s, want] of fixtures.minutes) assert.equal(parseMinutes(s), want, s)
+    for (const [s, want] of fixtures.dates) assert.equal(parseDate(s), want, s)
+    for (const [s, want] of fixtures.urls) assert.deepEqual(parseLedgerUrl(s), want, s)
+    for (const [a, b, want] of fixtures.sameSite) assert.equal(sameSite(a, b), want, `${a} ${b}`)
   })
 })

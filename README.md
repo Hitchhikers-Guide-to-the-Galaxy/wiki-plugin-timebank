@@ -96,6 +96,17 @@ A single click on the badge opens the **Ledger Verification Tool** beside the le
 
 The last check is kept on the item as `item.verified = { at, by, site, status, matched, unmatched, unreachable }`. Double-click still opens the editor.
 
+## The broker's reports (tools/)
+
+`tools/timebank-report.py` is the [Broker Role](https://time.peoplepowered.money/view/broker-role)'s tool. It reads the **Known Ledgers** page (a table item with Member, Site, Slug and Ledger columns), every known ledger, and the Time Transaction pages on the ledgers' sites, their `WATCH:` sites and the sites of the ledgers they name. Each transaction page counts once, by its home site and slug (the earliest fork in its journal). A transaction is **verified** when both ledgers carry it — a written line linking the page (or, with no page link, the same label and minutes) naming the other ledger, or the page's home being that ledger's own site — **in dialogue** when the missing side has forked it, **awaiting** otherwise.
+
+```bash
+python3 tools/timebank-report.py --known http://david.localhost:4242/view/known-ledgers [--dry-run] [--json]
+python3 -m unittest discover -s tools
+```
+
+It writes, on the broker's site, a **Timebank Weekly Report YYYY-Www** per ISO week (people table, the week's total, an SVG pie of hours given, a Transactions table, a tickable review row per transaction) and a **Timebank Report** over all weeks (people table, an SVG bar per week, a Shares table, the Transactions table), reconciled in place with fedwiki-lib's `Report`: a human's arrangement, ticks and notes survive a rerun. Beside the total report it writes `assets/timebank-report/equity-model.xlsx` (Shares: member, hours given, multiplier, weighted hours, share, with formulas and cached values) and, once, a Model Plugin item freezing `Shares!A1:E(n+2)`. The transaction parser is a port of `src/client/txn.js`; `test/fixtures/transactions.json` is shared by `node --test` and the Python tests so the two cannot drift.
+
 ## Supported Time Formats
 
 `2 hours` · `1 hour` · `30 mins` · `45 minutes` · `1.5h` · `90m` · `2 hrs`

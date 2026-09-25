@@ -1,0 +1,414 @@
+{
+  "note": "Generated from src/client/txn.js parseTransaction; tools/timebank_report.py must agree. Regenerate only with the JS as the source of truth.",
+  "cases": [
+    {
+      "name": "wikilink giver, external receiver, every field",
+      "text": "GIVER: [[Alice's Ledger]]\nRECEIVER: [http://david.localhost:4242/view/davids-ledger David's Ledger]\nHOURS: 1 hour\nDATE: 3 September 2026\nWHAT: Repairs\nSOURCE: audio note\nFixed the shed door and re-hung the gate.",
+      "page": {
+        "site": "demo.localhost:4242",
+        "slug": "repairs-for-david-3-september",
+        "title": "Repairs for David, 3 September",
+        "itemId": "t1"
+      },
+      "expect": {
+        "giver": {
+          "name": "Alice's Ledger",
+          "slug": "alices-ledger",
+          "site": "demo.localhost:4242",
+          "external": false
+        },
+        "receiver": {
+          "name": "David's Ledger",
+          "slug": "davids-ledger",
+          "site": "david.localhost:4242",
+          "scheme": "http:",
+          "href": "http://david.localhost:4242/view/davids-ledger",
+          "external": true
+        },
+        "minutes": 60,
+        "time": 1,
+        "date": 1788436800000,
+        "label": "Repairs",
+        "source": "audio note",
+        "note": "Fixed the shed door and re-hung the gate.",
+        "page": {
+          "site": "demo.localhost:4242",
+          "slug": "repairs-for-david-3-september",
+          "title": "Repairs for David, 3 September",
+          "itemId": "t1"
+        },
+        "valid": true
+      }
+    },
+    {
+      "name": "missing receiver is invalid; label defaults to the title",
+      "text": "HOURS: 2\nGIVER: [[A]]",
+      "page": {
+        "site": "x.wiki",
+        "title": "Soup Night"
+      },
+      "expect": {
+        "giver": {
+          "name": "A",
+          "slug": "a",
+          "site": "x.wiki",
+          "external": false
+        },
+        "receiver": null,
+        "minutes": 120,
+        "time": 2,
+        "date": null,
+        "label": "Soup Night",
+        "source": null,
+        "note": "",
+        "page": {
+          "site": "x.wiki",
+          "slug": "soup-night",
+          "title": "Soup Night",
+          "itemId": null
+        },
+        "valid": false
+      }
+    },
+    {
+      "name": "minutes, ISO date, no WHAT, scheme-relative and https links",
+      "text": "GIVER: [//alice.wiki/view/alices-ledger/ Alice]\nRECEIVER: [https://Bob.Wiki:443/bobs-ledger.html Bob]\nHOURS: 90 minutes\nDATE: 2026-09-03",
+      "page": {
+        "site": "Alice.Wiki",
+        "title": "Bread for Bob"
+      },
+      "expect": {
+        "giver": {
+          "name": "Alice",
+          "slug": "alices-ledger",
+          "site": "alice.wiki",
+          "scheme": null,
+          "href": "//alice.wiki/view/alices-ledger/",
+          "external": true
+        },
+        "receiver": {
+          "name": "Bob",
+          "slug": "bobs-ledger",
+          "site": "bob.wiki",
+          "scheme": "https:",
+          "href": "https://Bob.Wiki:443/bobs-ledger.html",
+          "external": true
+        },
+        "minutes": 90,
+        "time": 1.5,
+        "date": 1788436800000,
+        "label": "Bread for Bob",
+        "source": null,
+        "note": "",
+        "page": {
+          "site": "alice.wiki",
+          "slug": "bread-for-bob",
+          "title": "Bread for Bob",
+          "itemId": null
+        },
+        "valid": true
+      }
+    },
+    {
+      "name": "lower-case keys, 1.5h, day-first date with a comma, prose note lines",
+      "text": "giver: [http://alice.localhost:4242/view/alices-ledger Alice's Ledger]\n  receiver : [http://bob.localhost/view/bobs-ledger Bob's Ledger]\nhours: 1.5h\ndate: Thursday, 24 September 2026\nwhat: Bicycle lesson\nsource: hand\nIn the park.\nA full lap.",
+      "page": {
+        "site": "alice.localhost:4242",
+        "slug": "bicycle-lesson",
+        "title": "Bicycle lesson for Bob"
+      },
+      "expect": {
+        "giver": {
+          "name": "Alice's Ledger",
+          "slug": "alices-ledger",
+          "site": "alice.localhost:4242",
+          "scheme": "http:",
+          "href": "http://alice.localhost:4242/view/alices-ledger",
+          "external": true
+        },
+        "receiver": {
+          "name": "Bob's Ledger",
+          "slug": "bobs-ledger",
+          "site": "bob.localhost",
+          "scheme": "http:",
+          "href": "http://bob.localhost/view/bobs-ledger",
+          "external": true
+        },
+        "minutes": 90,
+        "time": 1.5,
+        "date": 1790251200000,
+        "label": "Bicycle lesson",
+        "source": "hand",
+        "note": "In the park. A full lap.",
+        "page": {
+          "site": "alice.localhost:4242",
+          "slug": "bicycle-lesson",
+          "title": "Bicycle lesson for Bob",
+          "itemId": null
+        },
+        "valid": true
+      }
+    },
+    {
+      "name": "zero hours and an unknown month are rejected",
+      "text": "GIVER: [[A]]\nRECEIVER: [[B]]\nHOURS: 0\nDATE: 3 Sept 2026",
+      "page": {
+        "site": "a.wiki",
+        "slug": "x"
+      },
+      "expect": {
+        "giver": {
+          "name": "A",
+          "slug": "a",
+          "site": "a.wiki",
+          "external": false
+        },
+        "receiver": {
+          "name": "B",
+          "slug": "b",
+          "site": "a.wiki",
+          "external": false
+        },
+        "minutes": null,
+        "time": null,
+        "date": null,
+        "label": null,
+        "source": null,
+        "note": "",
+        "page": {
+          "site": "a.wiki",
+          "slug": "x",
+          "title": null,
+          "itemId": null
+        },
+        "valid": false
+      }
+    },
+    {
+      "name": "an overflowing ISO date rolls over as JavaScript does",
+      "text": "GIVER: [[A]]\nRECEIVER: [[B]]\nHOURS: 30 mins\nDATE: 2026-02-30",
+      "page": {
+        "site": "a.wiki",
+        "slug": "x",
+        "title": "X"
+      },
+      "expect": {
+        "giver": {
+          "name": "A",
+          "slug": "a",
+          "site": "a.wiki",
+          "external": false
+        },
+        "receiver": {
+          "name": "B",
+          "slug": "b",
+          "site": "a.wiki",
+          "external": false
+        },
+        "minutes": 30,
+        "time": 0.5,
+        "date": 1772452800000,
+        "label": "X",
+        "source": null,
+        "note": "",
+        "page": {
+          "site": "a.wiki",
+          "slug": "x",
+          "title": "X",
+          "itemId": null
+        },
+        "valid": true
+      }
+    },
+    {
+      "name": "a link that is not a ledger address is no party",
+      "text": "GIVER: [http://alice.wiki/view/ Alice]\nRECEIVER: Bob\nHOURS: 2 hrs",
+      "page": {
+        "title": "Nothing"
+      },
+      "expect": {
+        "giver": null,
+        "receiver": null,
+        "minutes": 120,
+        "time": 2,
+        "date": null,
+        "label": "Nothing",
+        "source": null,
+        "note": "",
+        "page": {
+          "slug": "nothing",
+          "title": "Nothing",
+          "itemId": null
+        },
+        "valid": false
+      }
+    },
+    {
+      "name": "unrounded minutes round half up",
+      "text": "GIVER: [[A]]\nRECEIVER: [[B]]\nHOURS: 0.0125h",
+      "page": {
+        "site": "a.wiki",
+        "slug": "y"
+      },
+      "expect": {
+        "giver": {
+          "name": "A",
+          "slug": "a",
+          "site": "a.wiki",
+          "external": false
+        },
+        "receiver": {
+          "name": "B",
+          "slug": "b",
+          "site": "a.wiki",
+          "external": false
+        },
+        "minutes": 1,
+        "time": 0.016666666666666666,
+        "date": null,
+        "label": null,
+        "source": null,
+        "note": "",
+        "page": {
+          "site": "a.wiki",
+          "slug": "y",
+          "title": null,
+          "itemId": null
+        },
+        "valid": true
+      }
+    }
+  ],
+  "minutes": [
+    [
+      "2",
+      120
+    ],
+    [
+      "1.5h",
+      90
+    ],
+    [
+      "90 minutes",
+      90
+    ],
+    [
+      "30 mins",
+      30
+    ],
+    [
+      "two",
+      null
+    ],
+    [
+      "0",
+      null
+    ],
+    [
+      "2.5 hours",
+      150
+    ],
+    [
+      "1.2.3h",
+      72
+    ],
+    [
+      "45m",
+      45
+    ]
+  ],
+  "dates": [
+    [
+      "3 September 2026",
+      1788436800000
+    ],
+    [
+      "2026-09-03",
+      1788436800000
+    ],
+    [
+      "September 3, 2026",
+      1788436800000
+    ],
+    [
+      "31 September 2026",
+      1790856000000
+    ],
+    [
+      "3 Sept 2026",
+      null
+    ],
+    [
+      "2026-13-01",
+      null
+    ],
+    [
+      "Monday 21 September 2026",
+      1789992000000
+    ],
+    [
+      "1 Jan 99",
+      915192000000
+    ]
+  ],
+  "urls": [
+    [
+      "http://alice.localhost:4242/view/alices-ledger",
+      {
+        "site": "alice.localhost:4242",
+        "slug": "alices-ledger",
+        "scheme": "http:"
+      }
+    ],
+    [
+      "//a.wiki/x",
+      {
+        "site": "a.wiki",
+        "slug": "x",
+        "scheme": null
+      }
+    ],
+    [
+      "https://a.wiki/view/a/view/b.json",
+      {
+        "site": "a.wiki",
+        "slug": "b",
+        "scheme": "https:"
+      }
+    ],
+    [
+      "https://a.wiki/view/",
+      null
+    ],
+    [
+      "https://a.wiki/Bad%20Slug",
+      null
+    ],
+    [
+      "mailto:x",
+      null
+    ]
+  ],
+  "sameSite": [
+    [
+      "alice.localhost",
+      "alice.localhost:4242",
+      true
+    ],
+    [
+      "alice.localhost:4242",
+      "alice.localhost:4243",
+      false
+    ],
+    [
+      "a.wiki",
+      "a.wiki:8080",
+      false
+    ],
+    [
+      "A.wiki:443",
+      "a.wiki",
+      true
+    ]
+  ]
+}

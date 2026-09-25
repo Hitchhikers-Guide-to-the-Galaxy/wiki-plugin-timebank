@@ -8,3 +8,4 @@ npm-debug.log
 meta-client.json
 recycle
 status
+__pycache__/
