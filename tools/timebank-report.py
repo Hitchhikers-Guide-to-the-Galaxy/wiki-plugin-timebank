@@ -35,6 +35,8 @@ IMPORTDATA: Timebank Transactions and Timebank Weekly Totals.
 
   --review-model                       write the workbook and refreeze
   --plan 2026-W40 Alice 3 "Seed swap"  set one Plan row, as a sheet edit would
+  --workbook-only                      with --plan: write the workbook only, so the
+                                       pages' badges show the edit (for the owner's Freeze)
   --approve 2026-W40 [--approver NAME] approve the week (once only): the REVIEW
                                        item on the weekly report and the
                                        Approved sheet, then refreeze
@@ -776,6 +778,8 @@ def main() -> None:
                     help="set one Plan row of the Review Model (implies --review-model)")
     ap.add_argument("--approve", metavar="WEEK", help="approve one week, once only (implies --review-model)")
     ap.add_argument("--approver", help="who approved (default: --broker)")
+    ap.add_argument("--workbook-only", action="store_true",
+                    help="write the workbook and stop: no page is written or refrozen (a sheet edit the badges should notice)")
     ap.add_argument("--approved-on", help="the approval date, YYYY-MM-DD (default: today)")
     a = ap.parse_args()
     a.review_model = a.review_model or bool(a.plan) or bool(a.approve)
@@ -815,6 +819,9 @@ def main() -> None:
         print(f"    {c['member']}: ledger {num(c['ledger'])}h, report {num(c['report'])}h, difference {num(c['diff'])}h over {c['periods']} period ledgers")
     write = not a.dry_run
     frozen = review_model_step(a, domain, broker_site, members, ts) if a.review_model else None
+    if a.workbook_only:
+        print("  --workbook-only: no page written; the model items' badges will read Update available where their figures moved")
+        return
     for month, mts in months.items():
         title, _, ch = write_monthly(domain, month, mts, members, a.broker, stamp, write)
         print(f"  {'wrote' if write else 'would write'} http://{broker_site}/view/{fedwiki.as_slug(title)}: {', '.join(ch) or 'unchanged'}")
