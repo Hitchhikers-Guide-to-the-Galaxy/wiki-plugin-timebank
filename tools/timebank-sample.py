@@ -28,6 +28,22 @@ Rerunning rewrites the generated pages to the same bytes and leaves
 hand-written pages alone. Reindex afterwards: wiki-reindex <domain>.
 
   python3 tools/timebank-sample.py [--dry-run]
+
+Profiles (0.7.0). --profile laptop (the default) is the test bed above.
+--profile tailnet is the two-member demo on the Pi5's tailnet sites: David on
+ledger.timebank.private.fish and Alice on timebank.private.fish, over https,
+with July and August 2026 generated between them (the September pages are the
+hand- and Marvin-written ones, renamed). The Pi5 is not the laptop, so a
+tailnet run reads and writes a staging copy: --out DIR holds one folder per
+site (DIR/<domain>/pages, DIR/<domain>/assets), pulled from the Pi5 with rsync
+first and pushed back after. timebank.private.fish is also David's private
+engagement register: the tailnet profile only touches the demo cluster there.
+
+  rsync -a pi5:.wiki/{ledger.timebank.private.fish,timebank.private.fish} STAGE/
+  python3 tools/timebank-sample.py --profile tailnet --out STAGE
+  rsync -a STAGE/<domain>/ pi5:.wiki/<domain>/   # then delete its status index files
+
+--out also works with the laptop profile, for a dry run against a copy.
 """
 
 from __future__ import annotations
@@ -63,6 +79,7 @@ PEOPLE = {
 }
 for _k, _p in PEOPLE.items():
     _p["site"] = f"{_p['domain']}:{PORT}"
+    _p["base"] = f"http://{_p['site']}"
     _p["slug"] = fedwiki.as_slug(_p["ledger"])
     _p["url"] = f"http://{_p['site']}/view/{_p['slug']}"
     _p["about"] = f"About {_p['name']}"
@@ -118,6 +135,9 @@ NOTES = {
     "Printer setup": "Set up the new printer on the home network.",
     "Spreadsheet help": "Built a household budget spreadsheet.",
     "Soup": "Made a pot of soup and dropped it round.",
+    "Repairs": "Fixed a dripping tap and a sticking window catch, tools mine.",
+    "Swap evening planning": "Booked the hall, wrote the notice and posted it to the neighbourhood group for the month's swap evening.",
+    "Lift to the station": "Drove Alice to the station for the early train and brought her bags.",
     "Sewing lesson": "An afternoon learning to use the sewing machine: threading, tension and a straight seam.",
 }
 # Carol has no site: pages naming her are orphans, flagged unknown party.
@@ -132,6 +152,101 @@ LATE = [
     ("Shelf fitting for David", "bob", "david", "Shelf fitting", "2026-09-25", 2),
     ("Proofreading for Alice", "david", "alice", "Proofreading", "2026-09-24", 1.5),
 ]
+
+
+# Profile-dependent settings; use_profile() rebinds them. These are the laptop's.
+PROFILE = "laptop"
+FARM = None  # None: the farm roots fedwiki-lib knows; else a staging dir holding <domain>/pages
+TAKEN = {"Childcare for David", "Garden design for David", "Gardening for Bob", "Pruning for David", "Sewing for Bob",
+         "Translation for Bob", "Bread for Alice", "Soup for Alice", "Bicycle lesson for Alice", "Bike repair for David",
+         "Guitar lesson for David", "Lift to the station for Alice", "Moving boxes for David", "Tax form help for Alice",
+         "Website fix for Bob"}
+ONEOFFS_PER_MONTH = 9
+GIVER_GAPS = (("alice", "2026-07"), ("bob", "2026-08"), ("david", "2026-06"))
+RECEIVER_GAP = ("david", "2026-08")
+EARLIER = "June to August 2026"
+DEMO = ("localhost", "timebank-verification-demo", "http://localhost:4242/view/timebank-verification-demo", "the demo pages on localhost")
+PROTECTED: dict = {}      # domain -> slugs this tool never reads or writes
+SUMMARY_CMDS: dict = {}   # member -> extra command lines on the summary ledger
+PERIOD_CMDS: dict = {}    # member -> command lines the September period ledger must carry
+LEAD_PREFIX: dict = {}    # member -> a sentence before the summary's lead
+ABOUT_WHERE = "{name} owns {domain}, one of the three sites of the timebank test bed on the laptop."
+
+# The tailnet demo: two members, two sites on the Pi5, https, July and August generated.
+TAILNET = {
+    "people": {
+        "alice": {"name": "Alice", "domain": "timebank.private.fish", "ledger": "Alice's Ledger"},
+        "david": {"name": "David", "domain": "ledger.timebank.private.fish", "ledger": "David's Ledger"},
+    },
+    "months": ["2026-07", "2026-08"],
+    "extend": [
+        ("Repairs for David", "alice", "david", "Repairs", [("2026-07-09", 1.5), ("2026-08-13", 1)]),
+        ("Swap evening planning for Alice", "david", "alice", "Swap evening planning", [("2026-07-22", 2), ("2026-08-26", 2.5)]),
+    ],
+    "recurring": [
+        ("Childcare for David", "alice", "david", "Childcare", [("2026-07-02", 3), ("2026-07-16", 3), ("2026-08-06", 4), ("2026-08-20", 3)]),
+        ("Computer help for Alice", "david", "alice", "Computer help", [("2026-07-04", 2), ("2026-08-01", 1), ("2026-08-29", 1.5)]),
+        ("Bread for David", "alice", "david", "Bread", [("2026-07-11", 1), ("2026-08-08", 1)]),
+    ],
+    "works": {
+        "alice": ["Jam making", "Plant sitting", "Cake baking", "Hemming", "Seed sorting", "Hedge trimming"],
+        "david": ["Photo scanning", "Proofreading", "CV review", "Printer setup", "Spreadsheet help", "Lift to the station"],
+    },
+    "taken": {"Soup for Alice", "Repairs for David", "Event help from Alice", "Cooking for volunteers from Alice",
+              "Swap evening planning for Alice", "Seed swap stall from Alice"},
+    "oneoffs": 5,
+    "giver_gaps": (("alice", "2026-07"),),
+    "receiver_gap": ("david", "2026-08"),
+    "earlier": "July and August 2026",
+    "demo": ("ledger.timebank.private.fish", "timebank-verification-demo",
+             "https://ledger.timebank.private.fish/view/timebank-verification-demo", "the tailnet demo"),
+    # David's private engagement register shares timebank.private.fish with the demo cluster
+    "protected": {"timebank.private.fish": {"about", "engagement-state", "founding-twelve", "welcome-visitors"}},
+    "summary_cmds": {"david": ["WATCH: timebank.private.fish"], "alice": ["WATCH: ledger.timebank.private.fish"]},
+    "period_cmds": {"david": ["LINEUP", "WATCH: timebank.private.fish"], "alice": ["LINEUP", "WATCH: ledger.timebank.private.fish"]},
+    "lead_prefix": {"alice": "A demo ledger, part of the [[Timebank Demo Cluster]] on this site, not an engagement record: Alice is a made-up member. "},
+    "about_where": "{name} is one of the two members of the tailnet timebank demo; {domain} holds {their} ledger.",
+    "prov": ("Generated sample data — tools/timebank-sample.py --profile tailnet (seed 2026) in wiki-plugin-timebank 0.7.0, run by "
+             "Claude Code (claude-opus-5-5) for Phase 11 of the Timebank Verification Plan."),
+    "migrate_prov": ("Phase 11 migration of the tailnet demo — tools/timebank-sample.py --profile tailnet in wiki-plugin-timebank 0.7.0, "
+                     "run by Claude Code (claude-opus-5-5) for the Timebank Verification Plan."),
+}
+
+
+def use_profile(name: str, out: str | None) -> None:
+    """Rebind the module's settings for a profile; --out makes every page read
+    and write go to a staging dir (DIR/<domain>/pages) instead of the farm."""
+    global PROFILE, FARM, PEOPLE, OTHERS, MONTHS, EXTEND, RECURRING, WORKS, CAROL_PAGES, LATE, TAKEN, ONEOFFS_PER_MONTH
+    global GIVER_GAPS, RECEIVER_GAP, EARLIER, DEMO, PROTECTED, SUMMARY_CMDS, PERIOD_CMDS, LEAD_PREFIX, ABOUT_WHERE, PROV, MIGRATE_PROV
+    PROFILE, FARM = name, (os.path.abspath(os.path.expanduser(out)) if out else None)
+    if name == "laptop":
+        return
+    t = TAILNET
+    PEOPLE = copy.deepcopy(t["people"])
+    for p in PEOPLE.values():
+        p["site"] = p["domain"]
+        p["base"] = f"https://{p['domain']}"
+        p["slug"] = fedwiki.as_slug(p["ledger"])
+        p["url"] = f"{p['base']}/view/{p['slug']}"
+        p["about"] = f"About {p['name']}"
+    OTHERS = {k: [o for o in PEOPLE if o != k] for k in PEOPLE}
+    MONTHS, EXTEND, RECURRING, WORKS = t["months"], t["extend"], t["recurring"], t["works"]
+    CAROL_PAGES, LATE, TAKEN, ONEOFFS_PER_MONTH = [], [], t["taken"], t["oneoffs"]
+    GIVER_GAPS, RECEIVER_GAP, EARLIER, DEMO, PROTECTED = t["giver_gaps"], t["receiver_gap"], t["earlier"], t["demo"], t["protected"]
+    SUMMARY_CMDS, PERIOD_CMDS, LEAD_PREFIX, ABOUT_WHERE = t["summary_cmds"], t["period_cmds"], t["lead_prefix"], t["about_where"]
+    PROV, MIGRATE_PROV = t["prov"], t["migrate_prov"]
+
+
+def base_of(domain: str) -> str:
+    p = next((p for p in PEOPLE.values() if p["domain"] == domain), None)
+    return p["base"] if p else f"http://{domain}:{PORT}"
+
+
+def pages_of(domain: str):
+    """(slug, path) for the site's pages, less the protected ones."""
+    root, _ = fedwiki.resolve_root(domain, FARM)
+    skip = PROTECTED.get(domain, set())
+    return [(s, pth) for s, pth in sorted(fedwiki.iter_pages(root)) if s not in skip]
 
 
 # --- small helpers ------------------------------------------------------------
@@ -168,19 +283,27 @@ def party(key: str) -> dict:
 
 
 def load(domain: str, slug: str):
-    path = fedwiki.page_path(domain, slug)
+    if slug in PROTECTED.get(domain, set()):
+        sys.exit(f"refusing to read a protected page: {domain}/{slug}")
+    path = fedwiki.page_path(domain, slug, FARM)
     return fedwiki.load_page(path) if os.path.exists(path) else None
 
 
 def save(domain: str, slug: str, page: dict, write: bool, log: list, what: str) -> None:
-    log.append(f"{what}: http://{domain}:{PORT}/view/{slug}")
+    if slug in PROTECTED.get(domain, set()):
+        sys.exit(f"refusing to write a protected page: {domain}/{slug}")
+    log.append(f"{what}: {base_of(domain)}/view/{slug}")
     if write:
-        fedwiki.save_page(fedwiki.page_path(domain, slug), page)
+        fedwiki.save_page(fedwiki.page_path(domain, slug, FARM), page)
 
 
 def generated(page) -> bool:
+    """Written by this tool and not touched since: a later journal entry with
+    someone else's provenance (a hand-added occasion) makes the page hand-written."""
     j = (page or {}).get("journal") or []
-    return bool(j) and "timebank-sample.py (seed" in (j[0].get("provenance") or "")
+    if not j or "timebank-sample.py" not in (j[0].get("provenance") or "") or "(seed" not in (j[0].get("provenance") or ""):
+        return False
+    return all("timebank-sample.py" in (e.get("provenance") or "timebank-sample.py") for e in j)
 
 
 def ledger_item(page):
@@ -200,8 +323,8 @@ def rename_pages(write: bool, log: list) -> dict:
     """-> {old_slug: (old_title, new_title, new_slug)} across the three sites."""
     renames = {}
     for key, p in PEOPLE.items():
-        root, _ = fedwiki.resolve_root(p["domain"])
-        for slug, path in sorted(fedwiki.iter_pages(root)):
+        root, _ = fedwiki.resolve_root(p["domain"], FARM)
+        for slug, path in pages_of(p["domain"]):
             page = fedwiki.load_page(path)
             m = DATED_TITLE.match(page.get("title") or "")
             if not m or page.get("moved") or not any(i.get("type") == "transaction" for i in page["story"]):
@@ -214,8 +337,9 @@ def rename_pages(write: bool, log: list) -> dict:
             now = fedwiki.now_ms()
             page = copy.deepcopy(page)
             page["title"] = new
-            if page["journal"] and page["journal"][0].get("type") == "create":
-                page["journal"][0]["item"]["title"] = new
+            create = next((j for j in page["journal"] if j.get("type") == "create"), None)  # after any seeded forks
+            if create and isinstance(create.get("item"), dict):
+                create["item"]["title"] = new
             fork = fedwiki.add_journal(page, "fork", {"site": p["site"]}, date=now)
             fork["renamed"] = {"from": old, "slug": slug}
             fork["provenance"] = f"Renamed from [[{old}]] ({slug}): re-created under the new slug with the old journal carried over, as wiki-client does when a page's title is edited. {MIGRATE_PROV}"
@@ -249,10 +373,11 @@ def repoint(renames: dict, write: bool, log: list) -> None:
     titles and slugs become the new ones (ledger lines, forks, prose)."""
     pairs = sorted({(o, n) for o, n, _ in renames.values()}, key=lambda x: -len(x[0]))
     slugs = sorted(((s, v[2]) for s, v in renames.items()), key=lambda x: -len(x[0]))
-    targets = [(p["domain"], None) for p in PEOPLE.values()] + [("localhost", "timebank-verification-demo")]
+    targets = [(p["domain"], None) for p in PEOPLE.values()]
+    if DEMO[0] not in [p["domain"] for p in PEOPLE.values()]:
+        targets.append((DEMO[0], DEMO[1]))
     for domain, only in targets:
-        root, _ = fedwiki.resolve_root(domain)
-        for slug, path in sorted(fedwiki.iter_pages(root)):
+        for slug, path in pages_of(domain):
             if only and slug != only:
                 continue
             page = fedwiki.load_page(path)
@@ -288,7 +413,7 @@ def date_lines(text: str, site: str) -> str:
             t = e["txn"]
             where = t.get("site") or site
             dom = re.sub(r":\d+$", "", where)
-            page = load(dom, t["slug"]) if dom.endswith(".localhost") else None
+            page = load(dom, t["slug"]) if dom in [p["domain"] for p in PEOPLE.values()] else None
             fs = tr.page_transactions(page, where, t["slug"]) if page else []
             f = next((x for x in fs if x["date"] is not None and tr.js_round(e["time"] * 60) == x["minutes"]), fs[0] if fs else None)
             if f and f["date"] is not None:
@@ -305,19 +430,36 @@ def split_ledgers(write: bool, log: list) -> None:
             continue
         title = f"{p['ledger']} 2026-09"
         slug = fedwiki.as_slug(title)
-        body = []
+        others = " and ".join(f"[{PEOPLE[o]['url']} {PEOPLE[o]['ledger']}]" for o in OTHERS[key])
+        names = " and ".join(PEOPLE[o]["name"] for o in OTHERS[key])
+        body, cmds = [], []
         for line in item["text"].split("\n"):
             s = line.strip()
             if re.match(r"^(START|END)\s*:", s, re.I):
                 continue
-            if s.endswith("four weeks of swaps with " + " and ".join(PEOPLE[o]["name"] for o in OTHERS[key]) + "."):
+            if PROFILE == "laptop" and s.endswith("four weeks of swaps with " + names + "."):
                 continue
+            if PROFILE != "laptop":
+                if re.match(r"^(LINEUP|WATCH\s*:|NOTIFY\s*:)", s, re.I):
+                    cmds.append(s)
+                    continue
+                if not tr.parse_entries(s):
+                    continue  # the old one-week caption; the period writes its own
             body.append(line)
-        text = "\n".join(["START: 1 September 2026", "END: 30 September 2026"] + [date_lines(l, p["site"]) for l in body] +
-                         [f"{p['name']}'s September, from the ledger she kept before it had periods." if key == "alice" else
-                          f"{p['name']}'s September, from the ledger he kept before it had periods."])
+        for c in PERIOD_CMDS.get(key, []):
+            if not any(x.split(":")[0].strip().upper() == c.split(":")[0].strip().upper() for x in cmds):
+                cmds.append(c)
+        cmds.sort(key=lambda c: ["LINEUP", "WATCH", "NOTIFY"].index(c.split(":")[0].strip().upper()))
+        pronoun = "she" if key == "alice" else "he"
+        if PROFILE == "laptop":
+            caption = f"{p['name']}'s September, from the ledger {pronoun} kept before it had periods."
+        else:
+            caption = f"{p['name']}'s September with {names}, from the ledger {pronoun} kept before it had periods."
+        dated = [date_lines(l, p["site"]) for l in body]
+        if PROFILE != "laptop":
+            dated.sort(key=lambda l: (re.match(r"^\d{4}-\d\d-\d\d", l.strip()) or [""])[0])  # undated first, then by day
+        text = "\n".join(["START: 1 September 2026", "END: 30 September 2026"] + cmds + dated + [caption])
         if not load(p["domain"], slug):
-            others = " and ".join(f"[{PEOPLE[o]['url']} {PEOPLE[o]['ledger']}]" for o in OTHERS[key])
             new = fedwiki.make_page(title, [
                 f"{p['name']}'s ledger for September 2026: one period of [[{p['ledger']}]], whose summary adds the months up. Each line links its [[Time Transaction]] page and carries its date; the badge checks it against the September lines of {others}.",
                 {"type": "timebank", "text": text, "id": hid("period", slug)},
@@ -326,27 +468,41 @@ def split_ledgers(write: bool, log: list) -> None:
             ], provenance=f"Split from [[{p['ledger']}]]: its September lines, dated. {MIGRATE_PROV}")
             save(p["domain"], slug, new, write, log, "period ledger")
         # the ledger becomes the summary
-        item["text"] = f"OWNER: [[{p['about']}]]\nPERIODS: 10\nNOTIFY: {NOTIFY}"
+        notify = next((c for c in cmds if c.upper().startswith("NOTIFY")), f"NOTIFY: {NOTIFY}")
+        item["text"] = "\n".join([f"OWNER: [[{p['about']}]]", "PERIODS: 10"] + SUMMARY_CMDS.get(key, []) + [notify])
         fedwiki.add_journal(page, "edit", item, provenance=f"Now the summary ledger: its lines moved to [[{title}]]. {MIGRATE_PROV}")
         lead = page["story"][0]
-        others = " and ".join(f"[{PEOPLE[o]['url']} {PEOPLE[o]['ledger']}]" for o in OTHERS[key])
-        lead["text"] = (f"{p['name']} keeps a timebank ledger on {p['domain']}, month by month: one period page per month — "
+        lead["text"] = (LEAD_PREFIX.get(key, "") +
+                        f"{p['name']} keeps a timebank ledger on {p['domain']}, month by month: one period page per month — "
                         f"[[{title}]] and the months before it — and this summary, which finds them by title in the site's sitemap, "
                         f"shows the ten most recent transactions and the net balance. The OWNER line links [[{p['about']}]], where the "
                         f"balance also shows. {p['name']} trades hours with {others}; transaction pages and their ledgers name this page, "
                         f"never a period page.")
         fedwiki.add_journal(page, "edit", lead, provenance="Describes the summary ledger.")
-        help_ = page["story"][2]
-        help_["text"] = ("PERIODS: 10 finds the period pages titled with this page's title and a month, shows the ten most recent "
-                         "transactions and the net balance — hours given less hours received, over the lines written in the period "
-                         "ledgers. The badge is the worst of the periods' badges; click it to open the [[Ledger Verification Tool]].")
-        fedwiki.add_journal(page, "edit", help_, provenance="Describes PERIODS.")
+        help_text = ("PERIODS: 10 finds the period pages titled with this page's title and a month, shows the ten most recent "
+                     "transactions and the net balance — hours given less hours received, over the lines written in the period "
+                     "ledgers. The badge is the worst of the periods' badges; click it to open the [[Ledger Verification Tool]].")
+        see_text = (f"# See\n\n- [[{p['about']}]] — the owner, and the balance beside them\n- [[Transactions Index]] — every "
+                    f"transaction page on this site and whether a period ledger logs it\n- [[Time Transaction]] — what a transaction "
+                    f"page is\n- [[Time Transaction Template]] — the shape each one shares\n- [{DEMO[2]} "
+                    f"Timebank Verification Demo] — {DEMO[3]}")
+        at = page["story"].index(item)
+        nxt = page["story"][at + 1] if at + 1 < len(page["story"]) else None
+        if nxt and nxt.get("type") == "markdown" and not (nxt.get("text") or "").startswith("#"):
+            nxt["text"] = help_text
+            fedwiki.add_journal(page, "edit", nxt, provenance="Describes PERIODS.")
+        else:
+            h = fedwiki.make_item(help_text, id=hid("summary-help", p["domain"]))
+            page["story"].insert(at + 1, h)
+            fedwiki.add_journal(page, "add", h, after=item["id"], provenance="Describes PERIODS.")
         see = page["story"][-1]
-        see["text"] = (f"# See\n\n- [[{p['about']}]] — the owner, and the balance beside them\n- [[Transactions Index]] — every "
-                       f"transaction page on this site and whether a period ledger logs it\n- [[Time Transaction]] — what a transaction "
-                       f"page is\n- [[Time Transaction Template]] — the shape each one shares\n- [http://localhost:4242/view/timebank-verification-demo "
-                       f"Timebank Verification Demo] — the demo pages on localhost")
-        fedwiki.add_journal(page, "edit", see, provenance="See the owner and the index.")
+        if (see.get("text") or "").startswith("# See"):
+            see["text"] = see_text
+            fedwiki.add_journal(page, "edit", see, provenance="See the owner and the index.")
+        else:
+            s_item = fedwiki.make_item(see_text, unwrap=False, id=hid("summary-see", p["domain"]))
+            fedwiki.add_journal(page, "add", s_item, after=see["id"], provenance="See the owner and the index.")
+            page["story"].append(s_item)
         save(p["domain"], p["slug"], page, write, log, "summary ledger")
 
 
@@ -355,8 +511,9 @@ def about_pages(write: bool, log: list) -> None:
         slug = fedwiki.as_slug(p["about"])
         if load(p["domain"], slug):
             continue
+        where = ABOUT_WHERE.format(name=p["name"], domain=p["domain"], their="her" if key == "alice" else "his")
         page = fedwiki.make_page(p["about"], [
-            f"{p['name']} owns {p['domain']}, one of the three sites of the timebank test bed on the laptop. {p['name']}'s ledger is [[{p['ledger']}]] — a summary over one period page per month — and its OWNER line links this page, so the balance lives beside its owner.",
+            f"{where} {p['name']}'s ledger is [[{p['ledger']}]] — a summary over one period page per month — and its OWNER line links this page, so the balance lives beside its owner.",
             {"type": "timebank", "text": f"BALANCE: [[{p['ledger']}]]", "id": hid("balance", p["domain"])},
             f"The balance is read live from the period ledgers: hours given and received on lines written there, and the net. Transaction pages that no period ledger logs yet are not in it; the [[Transactions Index]] lists every transaction page on {p['domain']} and says which.",
             f"# See\n\n- [[{p['ledger']}]] — the summary ledger\n- [[Transactions Index]] — every transaction page on this site\n- [[Time Transaction]] — what a transaction page is",
@@ -401,10 +558,7 @@ def plan_transactions() -> tuple[dict, dict]:
     """-> (pages, logging). pages: title -> {giver, receiver, work, home, occasions: [(iso, hours)], extend};
     logging: (title, iso) -> {giver: bool, receiver: bool}."""
     rnd = random.Random(SEED)
-    taken = {"Childcare for David", "Garden design for David", "Gardening for Bob", "Pruning for David", "Sewing for Bob",
-             "Translation for Bob", "Bread for Alice", "Soup for Alice", "Bicycle lesson for Alice", "Bike repair for David",
-             "Guitar lesson for David", "Lift to the station for Alice", "Moving boxes for David", "Tax form help for Alice",
-             "Website fix for Bob"}
+    taken = TAKEN
     pages = {}
     for title, g, r, work, occ in EXTEND:
         pages[title] = {"giver": g, "receiver": r, "work": work, "home": g, "occasions": list(occ), "extend": True, "kind": "recurring"}
@@ -414,7 +568,7 @@ def plan_transactions() -> tuple[dict, dict]:
     for month in MONTHS:
         y, m = (int(x) for x in month.split("-"))
         n = 0
-        while n < 9:
+        while n < ONEOFFS_PER_MONTH:
             g = rnd.choice(sorted(PEOPLE))
             r = rnd.choice(OTHERS[g])
             work = rnd.choice(WORKS[g])
@@ -448,11 +602,11 @@ def plan_transactions() -> tuple[dict, dict]:
             carol = "carol" in (p["giver"], p["receiver"])
             logging[(title, iso)] = {"giver": not carol and (title, iso) not in late, "receiver": not carol and (title, iso) not in late}
     # a few gaps, one per site: the giver has not logged it (an orphan on their site's index)
-    for giver, month in (("alice", "2026-07"), ("bob", "2026-08"), ("david", "2026-06")):
+    for giver, month in GIVER_GAPS:
         t, iso = next((t, iso) for t, iso in sorted(oneoffs, key=lambda x: x[1]) if pages[t]["giver"] == giver and iso.startswith(month))
         logging[(t, iso)]["giver"] = False
     # and one receiver who has not logged it yet (the giver's month is partly verified)
-    t, iso = next((t, iso) for t, iso in sorted(oneoffs, key=lambda x: x[1]) if pages[t]["receiver"] == "david" and iso.startswith("2026-08")
+    t, iso = next((t, iso) for t, iso in sorted(oneoffs, key=lambda x: x[1]) if pages[t]["receiver"] == RECEIVER_GAP[0] and iso.startswith(RECEIVER_GAP[1])
                   and logging[(t, iso)]["giver"])
     logging[(t, iso)]["receiver"] = False
     return pages, logging
@@ -488,13 +642,13 @@ def write_transaction_pages(pages: dict, write: bool, log: list) -> None:
             for iso, hours in p["occasions"]:
                 items = occasion_items(title, p, iso, hours, slug, home["domain"], heading=False)
                 if first:
-                    items.insert(0, fedwiki.make_item("# Earlier occasions\n> The same work for the same person, June to August 2026.",
+                    items.insert(0, fedwiki.make_item(f"# Earlier occasions\n> The same work for the same person, {EARLIER}.",
                                                       unwrap=False, id=hid("earlier", home["domain"], slug)))
                     first = False
                 new += [i for i in items if i["id"] not in ids]
             if not new:
                 continue
-            see = next((k for k, i in enumerate(existing["story"]) if (i.get("text") or "").startswith("# See")), len(existing["story"]))
+            see = next((k for k, i in enumerate(existing["story"]) if (i.get("text") or "").startswith(("# Watched by", "# See"))), len(existing["story"]))
             after = existing["story"][see - 1]["id"]
             for k, item in enumerate(new):
                 existing["story"].insert(see + k, item)
@@ -503,7 +657,7 @@ def write_transaction_pages(pages: dict, write: bool, log: list) -> None:
             save(home["domain"], slug, existing, write, log, f"occasions added ({len(p['occasions'])})")
             continue
         if existing and not generated(existing):
-            log.append(f"SKIPPED (hand-written page in the way): http://{home['domain']}:{PORT}/view/{slug}")
+            log.append(f"SKIPPED (hand-written page in the way): {home['base']}/view/{slug}")
             continue
         occ = p["occasions"]
         n = len(occ)
@@ -552,7 +706,7 @@ def period_line(owner: str, title: str, p: dict, iso: str, hours: float) -> str 
         return None
     home = PEOPLE[p["home"]]
     slug = fedwiki.as_slug(title)
-    link = f"[[{title}]]" if home is me else f"[http://{home['site']}/view/{slug} {title}]"
+    link = f"[[{title}]]" if home is me else f"[{home['base']}/view/{slug} {title}]"
     return f"{iso} {link} {word} [{other['url']} {other['ledger']}]: {hours_text(hours)}"
 
 
@@ -578,7 +732,7 @@ def write_period_ledgers(pages: dict, logging: dict, write: bool, log: list) -> 
             slug = fedwiki.as_slug(title)
             existing = load(me["domain"], slug)
             if existing and not generated(existing):
-                log.append(f"SKIPPED (hand-written period ledger): http://{me['site']}/view/{slug}")
+                log.append(f"SKIPPED (hand-written period ledger): {me['base']}/view/{slug}")
                 continue
             others = " and ".join(f"[{PEOPLE[o]['url']} {PEOPLE[o]['ledger']}]" for o in OTHERS[key])
             page = fedwiki.make_page(title, [
@@ -592,7 +746,16 @@ def write_period_ledgers(pages: dict, logging: dict, write: bool, log: list) -> 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--profile", choices=["laptop", "tailnet"], default="laptop",
+                    help="laptop: the three-site test bed on *.localhost; tailnet: David and Alice on the Pi5's *.private.fish")
+    ap.add_argument("--out", metavar="DIR", help="read and write DIR/<domain>/pages instead of the farm (required for tailnet)")
     a = ap.parse_args()
+    if a.profile == "tailnet" and not a.out:
+        ap.error("--profile tailnet needs --out DIR: rsync the two sites from the Pi5 into DIR first")
+    use_profile(a.profile, a.out)
+    for p in PEOPLE.values():
+        if not os.path.isdir(os.path.join(str(fedwiki.resolve_root(p["domain"], FARM)[0]), "pages")):
+            sys.exit(f"no pages folder for {p['domain']} under {FARM or 'the farm'}")
     write = not a.dry_run
     log: list[str] = []
     renames = rename_pages(write, log)
