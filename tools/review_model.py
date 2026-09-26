@@ -294,6 +294,24 @@ def load_state(path: str) -> dict:
     return state
 
 
+def member_alias(name: str, names: list[str]) -> str:
+    """A member named by an older, shorter name — "David" from an About David
+    page — is the known member whose full name starts with it ("David Bovill",
+    read from the Site Record since 0.8.0), when exactly one does."""
+    if name in names:
+        return name
+    hits = [n for n in names if n.split(" ")[0] == name]
+    return hits[0] if len(hits) == 1 else name
+
+
+def alias_state(state: dict, names: list[str]) -> dict:
+    """The workbook's plan and approvals under the members' current names."""
+    state["plan"] = {w: {member_alias(m, names): v for m, v in rows.items()} for w, rows in state["plan"].items()}
+    for a in state["approved"]:
+        a["member"] = member_alias(a["member"], names)
+    return state
+
+
 # --- the model -------------------------------------------------------------------
 
 def weekly_totals(txs: list[dict], members: list[str]) -> dict[tuple[str, str], dict]:

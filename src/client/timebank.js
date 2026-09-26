@@ -42,7 +42,7 @@ const { findCandidates, renderReport, sitesMentioned, awaitingText, TOOL_TITLE }
 const { pullEntries, pageTransactions, transactionCandidates, freezeText, watchedSites, awaitingEntries, reconcilePlan } = txn
 const { resolveLike } = links
 const {
-  identitySlug, periodPagesOf, periodLedger, summariseLedger, ownerName, ledgersInSitemap, ledgerItemOf,
+  identitySlug, periodPagesOf, periodLedger, summariseLedger, resolveOwnerName, ownedBy, ledgersInSitemap, ledgerItemOf,
   indexCandidates, classifyOccasions, orphanPlan
 } = periods
 const { renderSummary, renderBalance, renderIndex } = views
@@ -709,10 +709,11 @@ const summaryFor = async (site, title, text, { statuses = true, memo = memoFetch
     }))
   }
   const recent = cmd.periods ? cmd.periods.recent : 10
+  const who = await resolveOwnerName(cmd.owner, site, memo.page)
   return {
     ...summariseLedger(list, { recent }),
     title, slug: identity, site: normSite(site),
-    owner: cmd.owner, ownerName: ownerName(cmd.owner)
+    owner: cmd.owner, ownerName: who
   }
 }
 
@@ -749,11 +750,13 @@ const findOwnedLedger = async (site, aboutSlug, memo) => {
   const ledgers = ledgersInSitemap(map)
   for (const l of ledgers) {
     const entry = (map || []).find(p => p.slug === l.slug)
-    if (!entry || !entry.links || !Object.prototype.hasOwnProperty.call(entry.links, aboutSlug)) continue
+    // a summary with no OWNER line owns [[About]] without linking it
+    const links = entry && entry.links && Object.prototype.hasOwnProperty.call(entry.links, aboutSlug)
+    if (!entry || (!links && aboutSlug !== 'about')) continue
     const page = await memo.page(site, l.slug)
     const it = ledgerItemOf(page)
     const c = it ? extractCommands(it.text || '') : {}
-    if (c.periods && c.owner && c.owner.slug === aboutSlug) return { title: page.title, text: it.text }
+    if (ownedBy(c, aboutSlug)) return { title: page.title, text: it.text }
   }
   return null
 }

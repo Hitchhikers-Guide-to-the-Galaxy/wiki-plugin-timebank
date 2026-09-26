@@ -98,7 +98,7 @@ The `transaction` item registers the giver's and receiver's sites as neighbours,
 **Period ledgers and the summary.** A ledger page per month — `Alice's Ledger 2026-09`, with its own `START`, `END`, entries and badge — and a summary ledger, `Alice's Ledger`:
 
 ```
-OWNER: [[About Alice]]
+OWNER: [[About]]
 PERIODS: 10
 NOTIFY: ntfy.sh/timebank-demo-david
 ```
@@ -107,9 +107,9 @@ NOTIFY: ntfy.sh/timebank-demo-david
 - Its badge aggregates the periods' badges, worst wins: any fail → fail, any partial → partial; periods with no linked entries do not count.
 - The summary's title is the ledger's identity. Transaction pages and other ledgers name `Alice's Ledger`, never a period page; a period page matches as the ledger it belongs to, and a counterparty that is a summary is read through its period pages overlapping this period.
 - A period ledger with `LINEUP` pulls only transaction pages dated inside its `START`..`END`; so does `WATCH`.
-- `OWNER: [[About Alice]]` names whose ledger it is.
+- `OWNER: [[About]]` names whose ledger it is: the site's stable [[About]] page, which every wiki carries, and whose **Site Record** — a code item (yaml) starting `site:` — names the one person authorised to write to the site, `owner: {id: null, name: Alice}`. The summary and the balance read the owner's name from there (0.8.0). A summary with no `OWNER` line means `[[About]]`. An older `OWNER: [[About Alice]]` still names "Alice" from its title.
 
-**Balance beside the owner.** A timebank item `BALANCE: [[Alice's Ledger]]` on the owner's About page (or bare `BALANCE`, which finds the summary whose `OWNER` links this page) shows hours given, received and the net, with links to the ledger and the Transactions Index.
+**Balance beside the owner.** A timebank item `BALANCE: [[Alice's Ledger]]` on the site's [[About]] page (or bare `BALANCE`, which finds the summary whose `OWNER` names this page — on About, a summary with no `OWNER` line too) shows hours given, received and the net, with links to the ledger and the Transactions Index. The house convention puts it under a `# Timebank` heading on About, beside the Site Record; a biography of the owner goes on a page named for them — [[Alice]], [[David Bovill]] — linked from About.
 
 **Transactions Index** (a plugin page, `pages/transactions-index`, listed in `factory.json` `pages`; its timebank item holds `INDEX`). For the site of the page to its left it lists every sitemap page linking `time-transaction` — less the template, the topic page and ledgers — one row per occasion with its date, parties, hours and state:
 
@@ -119,7 +119,7 @@ NOTIFY: ntfy.sh/timebank-demo-david
 
 A party whose ledger cannot be read is flagged **unknown party**. **Open as lineup** opens the listed pages (all, the orphans, or the awaiting) to the right of the index, keeping them all. **Log the orphans** writes each orphan's line into the period ledger that holds its date, or creates the period page, through the site's action route; it refuses, saying why, when the browser is not the owner or the site shown is another origin's.
 
-The report tool reads summary ledgers through their periods, takes the member's name from `OWNER`, writes a **Timebank Monthly Report YYYY-MM** per month beside the weekly ones, draws the total report's bars per month, and prints each summary ledger's logged net beside the report's net per person (the difference is what is not logged yet). `tools/timebank-sample.py` builds the laptop test bed: it renames the dated pages (see below), splits the ledgers into periods, adds the About pages, and generates June to September 2026 (seed 2026, rerunnable to the same bytes). `--profile tailnet --out DIR` does the same for the two-member demo on the Pi5's tailnet sites — David on ledger.timebank.private.fish, Alice on timebank.private.fish, July and August generated — reading and writing a staging copy that is rsynced to the Pi5; it never touches the rest of timebank.private.fish, which is also a private register. A generated page that has since been edited by hand is skipped on a rerun.
+The report tool reads summary ledgers through their periods, takes the member's name from `OWNER`, writes a **Timebank Monthly Report YYYY-MM** per month beside the weekly ones, draws the total report's bars per month, and prints each summary ledger's logged net beside the report's net per person (the difference is what is not logged yet). `tools/timebank-sample.py` builds the laptop test bed: it renames the dated pages (see below), splits the ledgers into periods, gives each site its [[About]] page (prose, Site Record, the BALANCE item), a page named for its owner and a domain-titled page, turns the older About Name pages into pointers, and generates June to September 2026 (seed 2026, rerunnable to the same bytes). `--profile tailnet --out DIR` does the same for the two-member demo on the Pi5's tailnet sites — David on ledger.timebank.private.fish, Alice on alice.timebank.private.fish (a site of her own since 0.8.0: a site has one owner), July and August generated — reading and writing a staging copy that is rsynced to the Pi5; it never touches timebank.private.fish, David's private register, where the demo once lived. A generated page that has since been edited by hand is skipped on a rerun.
 
 **Renaming a page** follows wiki-client's own rename (editing a ghost page's title, then forking it): the page is re-created under the new slug with its journal carried over — the create's title rewritten — and a `fork` action naming the old title (`renamed: {from, slug}`); the old slug keeps a one-line `➜ Moved to [[New Title]]` page marked `"moved"`, and every ledger line and fork naming it is repointed.
 

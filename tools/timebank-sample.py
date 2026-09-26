@@ -15,8 +15,14 @@ the 0.6.0 way and fills them with June to September 2026:
       three sites (and the localhost demo page) is repointed
     - splits each ledger: its lines move, dated, into "<Name>'s Ledger 2026-09";
       the ledger itself becomes the summary (OWNER + PERIODS)
-    - adds "About <Name>" with a BALANCE item, and teaches the template and the
-      topic page the new naming
+    - teaches the template and the topic page the new naming
+  about     (0.8.0; each page written once, then left to the owner)
+    - gives each site the house About convention: a stable [[About]] page —
+      prose, a Site Record (yaml, "site:") naming the owner as owner.json
+      does, and the BALANCE item under # Timebank — a page named for the
+      owner ([[Alice]], [[Bob]], [[David Bovill]]) linked from About, and the
+      domain-titled page for rosters; the 0.6.0 "About <Name>" page becomes a
+      "Moved to [[About]]" pointer and every link to it is repointed
   generate  (every run; deterministic, seed 2026)
     - recurring work: occasions added to three September pages, and new pages
       of two to four occasions
@@ -31,15 +37,16 @@ hand-written pages alone. Reindex afterwards: wiki-reindex <domain>.
 
 Profiles (0.7.0). --profile laptop (the default) is the test bed above.
 --profile tailnet is the two-member demo on the Pi5's tailnet sites: David on
-ledger.timebank.private.fish and Alice on timebank.private.fish, over https,
+ledger.timebank.private.fish and Alice on alice.timebank.private.fish, over https,
 with July and August 2026 generated between them (the September pages are the
 hand- and Marvin-written ones, renamed). The Pi5 is not the laptop, so a
 tailnet run reads and writes a staging copy: --out DIR holds one folder per
 site (DIR/<domain>/pages, DIR/<domain>/assets), pulled from the Pi5 with rsync
-first and pushed back after. timebank.private.fish is also David's private
-engagement register: the tailnet profile only touches the demo cluster there.
+first and pushed back after. Alice's demo cluster lived on timebank.private.fish,
+David's private engagement register, until 26 September 2026; the tailnet
+profile never reads or writes that site's own pages.
 
-  rsync -a pi5:.wiki/{ledger.timebank.private.fish,timebank.private.fish} STAGE/
+  rsync -a pi5:.wiki/{ledger.timebank.private.fish,alice.timebank.private.fish} STAGE/
   python3 tools/timebank-sample.py --profile tailnet --out STAGE
   rsync -a STAGE/<domain>/ pi5:.wiki/<domain>/   # then delete its status index files
 
@@ -72,17 +79,21 @@ PROV = ("Generated sample data — tools/timebank-sample.py (seed 2026) in wiki-
 MIGRATE_PROV = ("Phase 11 migration — tools/timebank-sample.py in wiki-plugin-timebank 0.6.0, run by Claude Code "
                 "(claude-opus-5-5) for the Timebank Verification Plan.")
 
+# name: how the pages speak of the member; person: the owner's name as owner.json
+# and the Site Record give it, and the title of the page about them (0.8.0).
 PEOPLE = {
-    "alice": {"name": "Alice", "domain": "alice.localhost", "ledger": "Alice's Ledger"},
-    "bob": {"name": "Bob", "domain": "bob.localhost", "ledger": "Bob's Ledger"},
-    "david": {"name": "David", "domain": "david.localhost", "ledger": "David's Ledger"},
+    "alice": {"name": "Alice", "person": "Alice", "domain": "alice.localhost", "ledger": "Alice's Ledger"},
+    "bob": {"name": "Bob", "person": "Bob", "domain": "bob.localhost", "ledger": "Bob's Ledger"},
+    "david": {"name": "David", "person": "David Bovill", "domain": "david.localhost", "ledger": "David's Ledger"},
 }
+ABOUT = "About"  # every site's stable About page: the Site Record names the owner (0.8.0)
 for _k, _p in PEOPLE.items():
     _p["site"] = f"{_p['domain']}:{PORT}"
     _p["base"] = f"http://{_p['site']}"
     _p["slug"] = fedwiki.as_slug(_p["ledger"])
     _p["url"] = f"http://{_p['site']}/view/{_p['slug']}"
-    _p["about"] = f"About {_p['name']}"
+    _p["about"] = ABOUT
+    _p["old_about"] = f"About {_p['name']}"  # the 0.6.0 owner page, now a pointer to About
 CAROL = {"name": "Carol", "ledger": "Carol's Ledger", "url": "https://carol.timebank.example/view/carols-ledger", "site": "carol.timebank.example"}
 OTHERS = {"alice": ["bob", "david"], "bob": ["alice", "david"], "david": ["alice", "bob"]}
 MONTHS = ["2026-06", "2026-07", "2026-08"]
@@ -171,12 +182,33 @@ SUMMARY_CMDS: dict = {}   # member -> extra command lines on the summary ledger
 PERIOD_CMDS: dict = {}    # member -> command lines the September period ledger must carry
 LEAD_PREFIX: dict = {}    # member -> a sentence before the summary's lead
 ABOUT_WHERE = "{name} owns {domain}, one of the three sites of the timebank test bed on the laptop."
+# Each site's Site Record and the words its About, person and domain pages use (0.8.0).
+BED = "the timebank test bed on the laptop"
+SITES = {
+    "alice.localhost": {"host": "laptop", "owner_id": None, "created": "2026-09-25",
+                        "purpose": "Alice's timebank ledger, one of the three sites of the laptop test bed"},
+    "bob.localhost": {"host": "laptop", "owner_id": None, "created": "2026-09-25",
+                      "purpose": "Bob's timebank ledger, one of the three sites of the laptop test bed"},
+    "david.localhost": {"host": "laptop", "owner_id": None, "created": "2026-09-25",
+                        "purpose": "David Bovill's timebank ledger and the broker's reports, in the laptop test bed"},
+}
+BROKER = "david"
+PERSONAS = {"alice", "bob"}  # made-up members; David Bovill is real
 
 # The tailnet demo: two members, two sites on the Pi5, https, July and August generated.
 TAILNET = {
     "people": {
-        "alice": {"name": "Alice", "domain": "timebank.private.fish", "ledger": "Alice's Ledger"},
-        "david": {"name": "David", "domain": "ledger.timebank.private.fish", "ledger": "David's Ledger"},
+        # Alice's site of her own since 0.8.0: a site has one owner. Her demo cluster
+        # lived on timebank.private.fish, David's private register, until 26 September 2026.
+        "alice": {"name": "Alice", "person": "Alice", "domain": "alice.timebank.private.fish", "ledger": "Alice's Ledger"},
+        "david": {"name": "David", "person": "David Bovill", "domain": "ledger.timebank.private.fish", "ledger": "David's Ledger"},
+    },
+    "bed": "the tailnet timebank demo",
+    "sites": {
+        "ledger.timebank.private.fish": {"host": "pi5", "owner_id": "david", "created": "2026-09-23",
+                                         "purpose": "David Bovill's timebank ledger and the broker's reports, in the tailnet demo"},
+        "alice.timebank.private.fish": {"host": "pi5", "owner_id": "david", "created": "2026-09-26",
+                                        "purpose": "Alice's demo timebank ledger, in the tailnet demo"},
     },
     "months": ["2026-07", "2026-08"],
     "extend": [
@@ -200,11 +232,11 @@ TAILNET = {
     "earlier": "July and August 2026",
     "demo": ("ledger.timebank.private.fish", "timebank-verification-demo",
              "https://ledger.timebank.private.fish/view/timebank-verification-demo", "the tailnet demo"),
-    # David's private engagement register shares timebank.private.fish with the demo cluster
+    # David's private engagement register: the demo cluster left it for alice.timebank.private.fish
     "protected": {"timebank.private.fish": {"about", "engagement-state", "founding-twelve", "welcome-visitors"}},
-    "summary_cmds": {"david": ["WATCH: timebank.private.fish"], "alice": ["WATCH: ledger.timebank.private.fish"]},
-    "period_cmds": {"david": ["LINEUP", "WATCH: timebank.private.fish"], "alice": ["LINEUP", "WATCH: ledger.timebank.private.fish"]},
-    "lead_prefix": {"alice": "A demo ledger, part of the [[Timebank Demo Cluster]] on this site, not an engagement record: Alice is a made-up member. "},
+    "summary_cmds": {"david": ["WATCH: alice.timebank.private.fish"], "alice": ["WATCH: ledger.timebank.private.fish"]},
+    "period_cmds": {"david": ["LINEUP", "WATCH: alice.timebank.private.fish"], "alice": ["LINEUP", "WATCH: ledger.timebank.private.fish"]},
+    "lead_prefix": {"alice": "A demo ledger, not an engagement record: Alice is a made-up member. "},
     "about_where": "{name} is one of the two members of the tailnet timebank demo; {domain} holds {their} ledger.",
     "prov": ("Generated sample data — tools/timebank-sample.py --profile tailnet (seed 2026) in wiki-plugin-timebank 0.7.0, run by "
              "Claude Code (claude-opus-5-5) for Phase 11 of the Timebank Verification Plan."),
@@ -218,6 +250,7 @@ def use_profile(name: str, out: str | None) -> None:
     and write go to a staging dir (DIR/<domain>/pages) instead of the farm."""
     global PROFILE, FARM, PEOPLE, OTHERS, MONTHS, EXTEND, RECURRING, WORKS, CAROL_PAGES, LATE, TAKEN, ONEOFFS_PER_MONTH
     global GIVER_GAPS, RECEIVER_GAP, EARLIER, DEMO, PROTECTED, SUMMARY_CMDS, PERIOD_CMDS, LEAD_PREFIX, ABOUT_WHERE, PROV, MIGRATE_PROV
+    global BED, SITES
     PROFILE, FARM = name, (os.path.abspath(os.path.expanduser(out)) if out else None)
     if name == "laptop":
         return
@@ -228,8 +261,10 @@ def use_profile(name: str, out: str | None) -> None:
         p["base"] = f"https://{p['domain']}"
         p["slug"] = fedwiki.as_slug(p["ledger"])
         p["url"] = f"{p['base']}/view/{p['slug']}"
-        p["about"] = f"About {p['name']}"
+        p["about"] = ABOUT
+        p["old_about"] = f"About {p['name']}"
     OTHERS = {k: [o for o in PEOPLE if o != k] for k in PEOPLE}
+    BED, SITES = t["bed"], t["sites"]
     MONTHS, EXTEND, RECURRING, WORKS = t["months"], t["extend"], t["recurring"], t["works"]
     CAROL_PAGES, LATE, TAKEN, ONEOFFS_PER_MONTH = [], [], t["taken"], t["oneoffs"]
     GIVER_GAPS, RECEIVER_GAP, EARLIER, DEMO, PROTECTED = t["giver_gaps"], t["receiver_gap"], t["earlier"], t["demo"], t["protected"]
@@ -292,9 +327,19 @@ def load(domain: str, slug: str):
 def save(domain: str, slug: str, page: dict, write: bool, log: list, what: str) -> None:
     if slug in PROTECTED.get(domain, set()):
         sys.exit(f"refusing to write a protected page: {domain}/{slug}")
+    path = fedwiki.page_path(domain, slug, FARM)
+    old = fedwiki.load_page(path) if os.path.exists(path) else None
+    if old and old.get("title") == page.get("title") and old.get("story") == page.get("story"):
+        log.append(f"unchanged ({what}): {base_of(domain)}/view/{slug}")
+        return  # the same story: keep the journal it has, forks and all
+    if old and generated(old):
+        # a regenerated page keeps the forks that brought it here (a page moved to a new site)
+        have = {(e.get("type"), e.get("site"), e.get("date")) for e in page.get("journal") or []}
+        page["journal"] = (page.get("journal") or []) + [e for e in old.get("journal") or [] if e.get("type") == "fork"
+                                                         and (e.get("type"), e.get("site"), e.get("date")) not in have]
     log.append(f"{what}: {base_of(domain)}/view/{slug}")
     if write:
-        fedwiki.save_page(fedwiki.page_path(domain, slug, FARM), page)
+        fedwiki.save_page(path, page)
 
 
 def generated(page) -> bool:
@@ -303,7 +348,7 @@ def generated(page) -> bool:
     j = (page or {}).get("journal") or []
     if not j or "timebank-sample.py" not in (j[0].get("provenance") or "") or "(seed" not in (j[0].get("provenance") or ""):
         return False
-    return all("timebank-sample.py" in (e.get("provenance") or "timebank-sample.py") for e in j)
+    return all(e.get("type") == "fork" or "timebank-sample.py" in (e.get("provenance") or "timebank-sample.py") for e in j)
 
 
 def ledger_item(page):
@@ -506,19 +551,160 @@ def split_ledgers(write: bool, log: list) -> None:
         save(p["domain"], p["slug"], page, write, log, "summary ledger")
 
 
+# --- the house About convention (0.8.0) -------------------------------------------
+#
+# Every wiki carries a stable page titled About: prose, then a Site Record (a
+# yaml code item starting "site:") naming the one person authorised to write to
+# the site, then the owner's BALANCE under # Timebank. A biography goes on a
+# page named for the owner, linked from About; the domain-titled page is the
+# roster-facing description and links About. The 0.6.0 "About <Name>" page
+# becomes a pointer, and every link to it is repointed.
+
+ABOUT_PROV = ("The house About convention — tools/timebank-sample.py in wiki-plugin-timebank 0.8.0, written by Claude Code "
+              "(claude-opus-5-5) in dialogue with David Bovill for Phase 11 of the Timebank Verification Plan.")
+ACCREDIT = "This page was generated through a dialogue between [[David Bovill]] and [[Claude Code]]."
+
+
+def site_record(p: dict) -> str:
+    s = SITES[p["domain"]]
+    return "\n".join([
+        "site:", f"  domain: {p['domain']}", f"  host: {s['host']}",
+        f"  owner: {{id: {s['owner_id'] or 'null'}, name: {p['person']}}}",
+        "  steward: null", f"  purpose: {s['purpose']}", f"  created: {s['created']}", "  status: active",
+        "  twins: []", "  publicKey: null", "  kid: null", "  formerly: []"])
+
+
+def about_story(key: str, p: dict) -> list:
+    d, her = p["domain"], "her" if key == "alice" else "his"
+    she = "She" if key == "alice" else "He"
+    persona = key in PERSONAS
+    holds = f"{her} ledger, [[{p['ledger']}]], and the [[Time Transaction]] pages {she.lower()} writes"
+    if key == BROKER:
+        holds += ", with the broker's [[Known Ledgers]] and the reports"
+    lead = f"**{d}** is {p['person']}'s site in {BED}: it holds {holds}."
+    if persona:
+        lead += f" {p['person']} is a demo persona, and these pages are sample data, not engagement records."
+    who = (f"Its owner is [[{p['person']}]], the one person authorised to write to it. The Site Record below names "
+           f"{'her' if key == 'alice' else 'him'} for the tools: the timebank plugin and the broker's report read the owner's name "
+           f"from it. The page about {p['person']} says who {she.lower()} is.")
+    balance = (f"The balance is read live from the period ledgers: hours given and received on lines written there, and the net. "
+               f"Transaction pages that no period ledger logs yet are not in it; the [[Transactions Index]] lists every transaction "
+               f"page on {d} and says which.")
+    see = [f"- [[{p['person']}]] — the owner", f"- [[{p['ledger']}]] — the summary ledger"]
+    if key == BROKER:
+        see.append("- [[Known Ledgers]] — the ledgers the broker reads")
+    see += ["- [[Transactions Index]] — every transaction page on this site", "- [[Time Transaction]] — what a transaction page is",
+            f"- [[{d}]] — the site, for rosters", "- [[Welcome Visitors]]"]
+    return [
+        fedwiki.make_item(lead, id=hid("about-lead", d)),
+        fedwiki.make_item(who, id=hid("about-who", d)),
+        fedwiki.make_item("# Site Record\n> Who owns this site, in yaml for the tools.", unwrap=False, id=hid("about-record-h", d)),
+        {"type": "code", "id": hid("about-record", d), "text": site_record(p), "language": "yaml"},
+        fedwiki.make_item("# Timebank\n> The owner's balance, read live from the ledger.", unwrap=False, id=hid("about-timebank-h", d)),
+        {"type": "timebank", "text": f"BALANCE: [[{p['ledger']}]]", "id": hid("balance", d)},
+        fedwiki.make_item(balance, id=hid("about-balance", d)),
+        fedwiki.make_item("# See\n\n" + "\n".join(see), unwrap=False, id=hid("about-see", d)),
+    ]
+
+
+def person_story(key: str, p: dict) -> list:
+    d, name = p["domain"], p["person"]
+    she, her = ("She", "her") if key == "alice" else ("He", "his")
+    others = " and ".join(PEOPLE[o]["person"] for o in OTHERS[key])
+    if key in PERSONAS:
+        lead = (f"{ACCREDIT} **{name}** is a demo persona: a made-up member of {BED}, not a real person. {she} owns {d}, "
+                f"the site this page is on, and is the one person authorised to write to it.")
+        body = [f"{she} trades hours with {others}. {she} keeps {her} ledger here, [[{p['ledger']}]], one period page a month, "
+                f"and {her} balance shows on the site's [[About]] page.",
+                f"{name} exists so the timebank plugin has someone to verify against. The pages here are sample data: a few written "
+                f"by hand, most generated by the plugin's sample tool."]
+        tail = []
+    else:
+        lead = (f"{ACCREDIT} **{name}** owns {d} and is the broker of {BED}: he keeps the [[Known Ledgers]], reads every "
+                f"member's ledger and writes the reports.")
+        body = [f"His own ledger is [[{p['ledger']}]], one period page a month, and his balance shows on the site's [[About]] page. "
+                f"He trades hours with {others}, "
+                + ("a demo persona." if len(OTHERS[key]) == 1 else "both demo personas.")
+                + " David Bovill is real: he plans the Timebank Verification Plan that this test bed serves."]
+        tail = [fedwiki.make_item("# Broker Role\n> What the broker knows and reports.", unwrap=False, id=hid("person-broker-h", d)),
+                fedwiki.make_reference("time.peoplepowered.money", "broker-role", "Broker Role",
+                                       "The Broker Role is the human seat that every working timebank turns out to need: someone who "
+                                       "knows which ledgers exist, reads them, and tells the group what happened.",
+                                       id=hid("person-broker", d))]
+    see = [f"- [[About]] — this site, its Site Record and {her} balance", f"- [[{p['ledger']}]] — {her} ledger"]
+    if key == BROKER:
+        see.append("- [[Known Ledgers]] — the ledgers the broker reads")
+    see.append("- [[Transactions Index]] — every transaction page on this site")
+    return ([fedwiki.make_item(lead, id=hid("person-lead", d))]
+            + [fedwiki.make_item(t, id=hid("person-body", d, k)) for k, t in enumerate(body)]
+            + tail + [fedwiki.make_item("# See\n\n" + "\n".join(see), unwrap=False, id=hid("person-see", d))])
+
+
+def domain_story(key: str, p: dict) -> list:
+    d = p["domain"]
+    lead = (f"**{d}** is {p['person']}'s site in {BED}. [[{p['person']}]] owns it and keeps [[{p['ledger']}]] here"
+            + (", with the broker's [[Known Ledgers]] and the reports." if key == BROKER else "."))
+    more = ("This page describes the site for rosters and indexes. The site's metadata — its owner, purpose and Site Record — "
+            "lives on [[About]], which is never renamed.")
+    return [fedwiki.make_item(lead, id=hid("domain-lead", d)), fedwiki.make_item(more, id=hid("domain-more", d)),
+            fedwiki.make_item(f"# See\n\n- [[About]]\n- [[{p['person']}]]\n- [[{p['ledger']}]]\n- [[Welcome Visitors]]",
+                              unwrap=False, id=hid("domain-see", d)),
+            fedwiki.make_item("# Search\n> Pages like these across the neighbourhood.", unwrap=False, id=hid("domain-search-h", d)),
+            {"type": "similarity", "id": hid("domain-search", d), "text": "*\nGALAXY"}]
+
+
+def repoint_about(domain: str, old: str, write: bool, log: list, only: str | None = None, person: str = "") -> None:
+    """[[About <Name>]] -> [[About]] in every item on the site (or one page),
+    and /view/about-<name> -> /view/about in external links, whose label
+    "About <Name>" becomes "<Person>'s About"."""
+    old_slug = fedwiki.as_slug(old)
+    for slug, path in pages_of(domain):
+        if (only and slug != only) or slug in (old_slug, "about"):
+            continue
+        page = fedwiki.load_page(path)
+        if page.get("moved") or generated(page):
+            continue  # a generated page is rewritten with [[About]] below
+        changed = False
+        for it in page["story"]:
+            t = it.get("text")
+            if not isinstance(t, str):
+                continue
+            u = re.sub(rf"\[\[{re.escape(old)}\]\]", f"[[{ABOUT}]]", t)
+            if person:
+                u = re.sub(rf"(/view/){re.escape(old_slug)} {re.escape(old)}\]", rf"\1about {person}'s {ABOUT}]", u)
+            u = re.sub(rf"(/view/){re.escape(old_slug)}(?![a-z0-9-])", r"\1about", u)
+            if u != t:
+                it["text"] = u
+                fedwiki.add_journal(page, "edit", it, provenance=f"Repointed [[{old}]] to [[{ABOUT}]]. {ABOUT_PROV}")
+                changed = True
+        if changed:
+            save(domain, slug, page, write, log, "repointed to About")
+
+
 def about_pages(write: bool, log: list) -> None:
     for key, p in PEOPLE.items():
-        slug = fedwiki.as_slug(p["about"])
-        if load(p["domain"], slug):
-            continue
-        where = ABOUT_WHERE.format(name=p["name"], domain=p["domain"], their="her" if key == "alice" else "his")
-        page = fedwiki.make_page(p["about"], [
-            f"{where} {p['name']}'s ledger is [[{p['ledger']}]] — a summary over one period page per month — and its OWNER line links this page, so the balance lives beside its owner.",
-            {"type": "timebank", "text": f"BALANCE: [[{p['ledger']}]]", "id": hid("balance", p["domain"])},
-            f"The balance is read live from the period ledgers: hours given and received on lines written there, and the net. Transaction pages that no period ledger logs yet are not in it; the [[Transactions Index]] lists every transaction page on {p['domain']} and says which.",
-            f"# See\n\n- [[{p['ledger']}]] — the summary ledger\n- [[Transactions Index]] — every transaction page on this site\n- [[Time Transaction]] — what a transaction page is",
-        ], provenance=MIGRATE_PROV)
-        save(p["domain"], slug, page, write, log, "about page")
+        d = p["domain"]
+        made = [("about", ABOUT, about_story, "About"), (fedwiki.as_slug(p["person"]), p["person"], person_story, "person page"),
+                (fedwiki.as_slug(d), d, domain_story, "domain page")]
+        for slug, title, story, what in made:
+            if load(d, slug):
+                continue  # written once; a hand-edited About is the owner's
+            save(d, slug, fedwiki.make_page(title, story(key, p), provenance=ABOUT_PROV), write, log, what)
+        old_slug = fedwiki.as_slug(p["old_about"])
+        old = load(d, old_slug)
+        if old and not old.get("moved"):
+            stub = fedwiki.make_item(f"➜ Moved to [[{ABOUT}]] — the owner's balance and the Site Record naming the owner now live on the "
+                                     f"site's About page, and the owner has a page of {'her' if key == 'alice' else 'his'} own, "
+                                     f"[[{p['person']}]].", id=hid("moved", d, old_slug))
+            # the forks that brought the old page here (a move from another site) stay as its lineage
+            forks = [e for e in old.get("journal") or [] if e.get("type") == "fork"]
+            moved = {"title": p["old_about"], "moved": ABOUT, "story": [stub],
+                     "journal": forks + [fedwiki.create_entry(p["old_about"], [stub], provenance=f"Moved to [[{ABOUT}]]. {ABOUT_PROV}")]}
+            save(d, old_slug, moved, write, log, "moved stub")
+        repoint_about(d, p["old_about"], write, log, person=p["person"])
+    for p in PEOPLE.values():  # the demo page names every member's About, wherever it lives
+        if DEMO[0] != p["domain"]:
+            repoint_about(DEMO[0], p["old_about"], write, log, only=DEMO[1], person=p["person"])
 
 
 def teach_template(write: bool, log: list) -> None:
@@ -637,9 +823,13 @@ def write_transaction_pages(pages: dict, write: bool, log: list) -> None:
                 log.append(f"would add {len(p['occasions'])} occasions to {title} once it is renamed")
                 continue
             ids = {i["id"] for i in existing["story"]}
+            # an occasion already on the page — by its date item's text, as ids carry the site — is not added again
+            dated = {i.get("text") for i in existing["story"] if i.get("type") == "date"}
+            first = not any((i.get("text") or "").startswith("# Earlier occasions") for i in existing["story"])
             new = []
-            first = True
             for iso, hours in p["occasions"]:
+                if f"{iso} {title}" in dated:
+                    continue
                 items = occasion_items(title, p, iso, hours, slug, home["domain"], heading=False)
                 if first:
                     items.insert(0, fedwiki.make_item(f"# Earlier occasions\n> The same work for the same person, {EARLIER}.",

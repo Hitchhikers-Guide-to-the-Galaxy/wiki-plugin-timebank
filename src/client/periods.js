@@ -14,7 +14,7 @@
 // ledgers name "Alice's Ledger" (site plus slug alices-ledger), never a
 // period page, so a period page matches as the ledger it belongs to.
 
-import { asSlug, normSite, sameSite, parseEntries, extractCommands, extractDates, isoDay } from './parse.js'
+import { asSlug, normSite, sameSite, parseEntries, extractCommands, extractDates, isoDay, ABOUT_REF } from './parse.js'
 import { inPeriod, claimWritten, entryLineFor, personOf, freezeText, TEMPLATE_TITLE, TRANSACTION_TOPIC } from './txn.js'
 
 // "Alice's Ledger 2026-09" -> { base: "Alice's Ledger", month: '2026-09' } | null
@@ -260,11 +260,66 @@ export const orphanPlan = (rows, site) => {
 
 // --- Balance beside the owner ---
 
-// The owner's name from their About page title: "About Alice" -> "Alice".
-export const ownerName = ref => {
+// The Site Record on a site's [[About]] page: the code item whose text starts
+// "site:" (the house convention). Reads the owner's name from either yaml form,
+//   owner: {id: null, name: David Bovill}
+// or
+//   owner:
+//     id: null
+//     name: David Bovill
+// -> the name | null. A small reader for this one field, not a yaml parser.
+const yamlScalar = v => {
+  const t = String(v || '').trim().replace(/\s+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim()
+  return !t || /^(null|~)$/i.test(t) ? null : t
+}
+export const siteRecordOf = page => ((page && page.story) || [])
+  .find(i => i && i.type === 'code' && /^site\s*:/.test(String(i.text || ''))) || null
+export const siteRecordOwner = page => {
+  const it = siteRecordOf(page)
+  if (!it) return null
+  const rows = String(it.text).split('\n')
+  for (let k = 0; k < rows.length; k++) {
+    const m = rows[k].match(/^(\s*)owner\s*:\s*(.*)$/)
+    if (!m) continue
+    const flow = m[2].trim().match(/^\{(.*)\}$/)
+    if (flow) {
+      for (const part of flow[1].split(',')) {
+        const kv = part.match(/^\s*name\s*:\s*(.*)$/)
+        if (kv) return yamlScalar(kv[1])
+      }
+      return null
+    }
+    if (m[2].trim() && !m[2].trim().startsWith('#')) return yamlScalar(m[2]) // owner: David Bovill
+    for (let j = k + 1; j < rows.length; j++) {
+      const n = rows[j].match(/^(\s*)(\w+)\s*:\s*(.*)$/)
+      if (!n || n[1].length <= m[1].length) break
+      if (n[2] === 'name') return yamlScalar(n[3])
+    }
+    return null
+  }
+  return null
+}
+
+// The owner's name. OWNER: [[About]] -> from the Site Record on that About page
+// (pass the page); an older OWNER: [[About Alice]] -> "Alice" from the title.
+export const ownerName = (ref, about = null) => {
+  if (ref && ref.slug === ABOUT_REF.slug) return siteRecordOwner(about)
   const t = String((ref && (ref.name || ref.title)) || '').trim()
   return t.replace(/^About\s+/i, '') || null
 }
+
+// The owner's name for a summary ledger on `site`: when OWNER names the About
+// page, fetch it and read its Site Record. fetchPage(site, slug) -> page|null (0.8.0)
+export const resolveOwnerName = async (owner, site, fetchPage) => {
+  if (!owner) return null
+  if (owner.slug !== ABOUT_REF.slug) return ownerName(owner)
+  const about = await fetchPage(owner.external ? owner.site : site, owner.slug).catch(() => null)
+  return ownerName(owner, about)
+}
+
+// Does a summary ledger's command set name this page as its owner? A sitemap
+// entry need not link About: a summary with no OWNER line means [[About]].
+export const ownedBy = (cmd, aboutSlug) => Boolean(cmd && cmd.periods && cmd.owner && !cmd.owner.external && cmd.owner.slug === aboutSlug)
 
 // A party as a person: "Alice's Ledger" -> "Alice".
 export const partyName = ref => ref ? personOf(ref.name || ref.slug) : '?'

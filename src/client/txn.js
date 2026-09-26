@@ -244,8 +244,12 @@ export const signOffState = ({ direction, pulled = false, matched = false, fork 
 
 // The site a page was forked from, when its journal says it is a fork made
 // on `site` (the latest fork action naming another site), else null.
+// A fork that records a rename (renamed) or the page's move to a new site
+// (moved) is lineage, not someone's copy of the page (0.8.0).
+export const lineageFork = a => Boolean(a && a.type === 'fork' && (a.renamed || a.moved))
+
 export const forkedFrom = (page, site) => {
-  const forks = ((page && page.journal) || []).filter(a => a.type === 'fork' && a.site && !sameSite(a.site, site))
+  const forks = ((page && page.journal) || []).filter(a => a.type === 'fork' && a.site && !lineageFork(a) && !sameSite(a.site, site))
   return forks.length ? normSite(forks[forks.length - 1].site) : null
 }
 

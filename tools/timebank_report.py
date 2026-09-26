@@ -195,7 +195,13 @@ def extract_commands(text) -> dict:
                     watch.append(site)
         if re.match(r"^LINEUP$", line, re.I):
             lineup = True
+    if periods and not owner:
+        owner = {**ABOUT_REF, "implicit": True}  # a summary's owner is the site's About (0.8.0)
     return {"notify": notify, "lineup": lineup, "watch": watch, "owner": owner, "periods": periods}
+
+
+# The stable About page every wiki carries: its Site Record names the owner (0.8.0).
+ABOUT_REF = {"name": "About", "slug": "about", "external": False}
 
 
 def parse_entries(text) -> list[dict]:
@@ -346,10 +352,52 @@ def is_summary(page) -> bool:
                for it in (page or {}).get("story") or [])
 
 
-def owner_name(ref) -> str | None:
-    """OWNER: [[About Alice]] -> "Alice"."""
+def _yaml_scalar(v) -> str | None:
+    t = re.sub(r"\s+#.*$", "", str(v or "").strip())
+    t = re.sub(r"^(['\"])(.*)\1$", r"\2", t).strip()
+    return None if not t or re.match(r"^(null|~)$", t, re.I) else t
+
+
+def site_record_owner(page) -> str | None:
+    """The owner's name from the Site Record on a site's About page: the code
+    item whose text starts "site:", in flow (owner: {id: null, name: X}) or
+    block yaml. A reader for this one field, as the plugin's siteRecordOwner."""
+    item = next((i for i in (page or {}).get("story") or []
+                 if i.get("type") == "code" and re.match(r"^site\s*:", str(i.get("text") or ""))), None)
+    if not item:
+        return None
+    rows = str(item["text"]).split("\n")
+    for k, row in enumerate(rows):
+        m = re.match(r"^(\s*)owner\s*:\s*(.*)$", row)
+        if not m:
+            continue
+        rest = m.group(2).strip()
+        flow = re.match(r"^\{(.*)\}$", rest)
+        if flow:
+            for part in flow.group(1).split(","):
+                kv = re.match(r"^\s*name\s*:\s*(.*)$", part)
+                if kv:
+                    return _yaml_scalar(kv.group(1))
+            return None
+        if rest and not rest.startswith("#"):
+            return _yaml_scalar(rest)
+        for nxt in rows[k + 1:]:
+            n = re.match(r"^(\s*)(\w+)\s*:\s*(.*)$", nxt)
+            if not n or len(n.group(1)) <= len(m.group(1)):
+                break
+            if n.group(2) == "name":
+                return _yaml_scalar(n.group(3))
+        return None
+    return None
+
+
+def owner_name(ref, about=None) -> str | None:
+    """OWNER: [[About]] -> the name in that About page's Site Record (pass the
+    page); an older OWNER: [[About Alice]] -> "Alice" from the title."""
     if not ref:
         return None
+    if ref.get("slug") == ABOUT_REF["slug"]:
+        return site_record_owner(about)
     return re.sub(r"^About\s+", "", ref.get("name") or "", flags=re.I).strip() or None
 
 
@@ -376,15 +424,21 @@ def same_ledger(a, b) -> bool:
 
 # --- the broker ---------------------------------------------------------------
 
+def lineage_fork(action: dict) -> bool:
+    """A fork recording a rename (renamed) or the page's move to a new site
+    (moved) is lineage, not a copy of someone else's page (0.8.0)."""
+    return action.get("type") == "fork" and bool(action.get("renamed") or action.get("moved"))
+
+
 def home_site(page: dict, site: str) -> str:
     """Where a page was first written: the earliest real fork in its journal
-    (a fork seated before the create only seeds the neighbourhood), else the
-    site it was read from."""
+    (a fork seated before the create only seeds the neighbourhood; a rename or
+    a move is lineage), else the site it was read from."""
     seen_create = False
     for action in (page or {}).get("journal") or []:
         if action.get("type") == "create":
             seen_create = True
-        elif action.get("type") == "fork" and seen_create and action.get("site"):
+        elif action.get("type") == "fork" and seen_create and action.get("site") and not lineage_fork(action):
             return norm_site(action["site"])
     return norm_site(site)
 

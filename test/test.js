@@ -1234,6 +1234,7 @@ describe('shared fixtures for the broker report tool (tools/timebank_report.py)'
 const {
   periodOfTitle, periodPagesOf, ledgersInSitemap, identitySlug, monthBounds, periodLedger, aggregateStatus,
   summariseLedger, classifyOccasions, stateCounts, orphanPlan, indexCandidates, ownerName, signedHours,
+  siteRecordOwner, resolveOwnerName, ownedBy,
   renderSummary, renderBalance, renderIndex, claimWritten: claimW, occasionKey, inPeriod, personOf: personOfName,
   counterpartyEntries, pageTransactions, pullEntries, isoDay
 } = timebank
@@ -1344,6 +1345,57 @@ describe('timebank 0.6.0 period ledgers and the summary', () => {
     assert.equal(extractCommands('OWNER: [[About Alice]]\nPERIODS').owner.slug, 'about-alice')
     assert.equal(extractCommands('PERIODS').periods.recent, 10)
     assert.equal(ownerName({ name: 'About Alice' }), 'Alice')
+  })
+
+  // 0.8.0: the house About convention — OWNER defaults to [[About]], whose Site Record names the owner
+  const record = text => ({ title: 'About', story: [{ type: 'markdown', text: 'Prose.' }, { type: 'code', language: 'yaml', text }] })
+  const FLOW = 'site:\n  domain: david.localhost\n  host: laptop\n  owner: {id: null, name: David Bovill}\n  steward: null\n  status: active'
+  const BLOCK = 'site:\n  domain: alice.timebank.private.fish\n  owner:\n    id: null\n    name: "Alice"\n  steward: null'
+
+  test('the Site Record names the owner, in flow or block yaml', () => {
+    assert.equal(siteRecordOwner(record(FLOW)), 'David Bovill')
+    assert.equal(siteRecordOwner(record(BLOCK)), 'Alice')
+    assert.equal(siteRecordOwner(record('site:\n  owner: {id: null, name: null}')), null)
+    assert.equal(siteRecordOwner(record('owner: {name: Not A Record}')), null, 'a code item not starting site: is not a Site Record')
+    assert.equal(siteRecordOwner({ title: 'About', story: [{ type: 'markdown', text: 'site:\n  owner: {name: Bob}' }] }), null, 'only a code item')
+    assert.equal(siteRecordOwner(null), null)
+  })
+
+  test('OWNER defaults to [[About]] on a summary ledger; the name comes from the Site Record', async () => {
+    const c = extractCommands('PERIODS: 10\nNOTIFY: ntfy.sh/x')
+    assert.equal(c.owner.slug, 'about')
+    assert.equal(c.owner.name, 'About')
+    assert.equal(extractCommands('NOTIFY: ntfy.sh/x').owner, null, 'only a summary ledger has a default owner')
+    assert.equal(extractCommands('OWNER: [[About]]\nPERIODS').owner.implicit, undefined)
+    assert.equal(ownerName(c.owner, record(FLOW)), 'David Bovill')
+    assert.equal(ownerName(c.owner, null), null, 'About with no Site Record names no one')
+    assert.equal(ownerName({ name: 'About Bob', slug: 'about-bob' }), 'Bob', 'an older About Name page still reads from its title')
+    const pages = { 'alice.localhost:4242/about': record(BLOCK) }
+    const fetchPage = async (site, slug) => pages[`${site}/${slug}`] || null
+    assert.equal(await resolveOwnerName(c.owner, 'alice.localhost:4242', fetchPage), 'Alice')
+    assert.equal(await resolveOwnerName(c.owner, 'bob.localhost:4242', fetchPage), null)
+    assert.equal(await resolveOwnerName({ name: 'About Bob', slug: 'about-bob' }, 'bob.localhost:4242', fetchPage), 'Bob')
+    assert.ok(ownedBy(c, 'about'))
+    assert.ok(!ownedBy(c, 'about-alice'))
+    assert.ok(ownedBy(extractCommands('OWNER: [[About Alice]]\nPERIODS'), 'about-alice'))
+    assert.ok(!ownedBy(extractCommands('OWNER: [[About]]'), 'about'), 'not a summary')
+  })
+
+  test('the summary names the owner beside the About link, or says the Site Record is missing', () => {
+    const s = summariseLedger([], { recent: 3 })
+    const ok = renderSummary({ ...s, title: "David's Ledger", site: 'david.localhost:4242', owner: { name: 'About', slug: 'about' }, ownerName: 'David Bovill' })
+    assert.ok(ok.includes('David Bovill — ') && ok.includes('data-page-name="about"'))
+    const none = renderSummary({ ...s, title: "David's Ledger", site: 'david.localhost:4242', owner: { name: 'About', slug: 'about' }, ownerName: null })
+    assert.ok(none.includes('names no owner'))
+  })
+
+  test('a rename or a move to a new site is lineage, not the receiver\'s fork (0.8.0)', () => {
+    const { forkedFrom, lineageFork } = timebank
+    const moved = { journal: [{ type: 'create' }, { type: 'fork', site: 'ledger.example' }, { type: 'fork', site: 'old.example', renamed: { from: 'X, 3 September' } },
+      { type: 'fork', site: 'old.example', moved: { from: 'old.example', to: 'alice.example' } }] }
+    assert.equal(forkedFrom(moved, 'alice.example'), 'ledger.example')
+    assert.ok(lineageFork(moved.journal[3]) && lineageFork(moved.journal[2]) && !lineageFork(moved.journal[1]))
+    assert.equal(forkedFrom({ journal: [{ type: 'create' }, { type: 'fork', site: 'old.example', moved: { from: 'old.example' } }] }, 'ledger.example'), null)
   })
 
   test('the aggregate badge: the worst wins, empty periods do not count', () => {

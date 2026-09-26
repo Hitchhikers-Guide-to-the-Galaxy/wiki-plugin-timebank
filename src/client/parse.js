@@ -22,12 +22,14 @@
 //   LINEUP                                — pull entries from Time Transaction pages beside
 //                                           the ledger and on its own site (thaw)
 //   TOOL                                  — this item is the Ledger Verification Tool's report
-//   OWNER: [[About Alice]]                — whose ledger this is: the owner's About page (0.6.0)
+//   OWNER: [[About]]                      — whose ledger this is: the site's About page, whose
+//                                           Site Record names the owner; a summary ledger
+//                                           with no OWNER line means [[About]] (0.8.0)
 //   PERIODS | PERIODS: 10                 — a summary ledger: its period pages are the pages
 //                                           titled "<this title> YYYY-MM"; shows the 10 most
 //                                           recent transactions and the net balance (0.6.0)
 //   INDEX                                 — this item is the Transactions Index (0.6.0)
-//   BALANCE | BALANCE: [[Alice's Ledger]] — the owner's balance, on their About page (0.6.0)
+//   BALANCE | BALANCE: [[Alice's Ledger]] — the owner's balance, on the site's About page (0.6.0)
 //   REVIEW: 2026-W40                      — approve a week on its weekly report: reads the
 //                                           model item freezing the Review tab (0.7.0; review.js)
 //   BOARD                                 — the Review Board: draws the model items on its page (0.7.0)
@@ -230,8 +232,13 @@ export const extractCommands = text => {
     if (/^LINEUP$/i.test(line)) lineup = true
     if (/^TOOL$/i.test(line)) tool = true
   })
+  if (periods && !owner) owner = { ...ABOUT_REF, implicit: true } // a summary's owner is the site's About (0.8.0)
   return { notify, lineup, tool, watch, owner, periods, index, balance, review, board }
 }
+
+// The stable About page every wiki carries: its Site Record names the owner (0.8.0).
+export const ABOUT_TITLE = 'About'
+export const ABOUT_REF = Object.freeze({ name: ABOUT_TITLE, slug: 'about', external: false })
 
 // A ledger named by a link token: [[Name]] is a ledger on `site` (the site the
 // text is written on); [href Name] is a ledger anywhere. -> ref | null

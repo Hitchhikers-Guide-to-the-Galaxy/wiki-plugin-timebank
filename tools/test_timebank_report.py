@@ -195,6 +195,41 @@ class PeriodsAndOccasions(unittest.TestCase):
         c = tr.extract_commands("OWNER: [[About Alice]]\nPERIODS")
         self.assertEqual((tr.owner_name(c["owner"]), c["periods"]), ("Alice", {"recent": 10}))
 
+    def test_owner_from_the_site_record(self):
+        """0.8.0: OWNER defaults to [[About]]; the name comes from its Site Record."""
+        def about(text):
+            return {"title": "About", "story": [{"type": "markdown", "text": "Prose."}, {"type": "code", "language": "yaml", "text": text}]}
+        flow = about("site:\n  domain: david.localhost\n  owner: {id: null, name: David Bovill}\n  status: active")
+        block = about("site:\n  domain: alice.timebank.private.fish\n  owner:\n    id: null\n    name: 'Alice'\n  steward: null")
+        self.assertEqual(tr.site_record_owner(flow), "David Bovill")
+        self.assertEqual(tr.site_record_owner(block), "Alice")
+        self.assertIsNone(tr.site_record_owner(about("owner: {name: Not A Record}")))
+        self.assertIsNone(tr.site_record_owner(about("site:\n  owner: {id: null, name: null}")))
+        c = tr.extract_commands("PERIODS: 10\nNOTIFY: ntfy.sh/x")
+        self.assertEqual(c["owner"]["slug"], "about")
+        self.assertIsNone(tr.extract_commands("NOTIFY: ntfy.sh/x")["owner"])
+        self.assertEqual(tr.owner_name(c["owner"], flow), "David Bovill")
+        self.assertIsNone(tr.owner_name(c["owner"], None))
+        self.assertEqual(tr.owner_name(tr.extract_commands("OWNER: [[About]]\nPERIODS")["owner"], block), "Alice")
+        self.assertEqual(tr.owner_name({"name": "About Bob", "slug": "about-bob"}), "Bob")
+
+    def test_home_site_skips_lineage_forks(self):
+        j = [{"type": "fork", "site": "seed.example"}, {"type": "create"},
+             {"type": "fork", "site": "old.example", "renamed": {"from": "Soup, 5 September"}},
+             {"type": "fork", "site": "old.example", "moved": {"from": "old.example", "to": "alice.example"}}]
+        self.assertEqual(tr.home_site({"journal": j}, "alice.example"), "alice.example")
+        self.assertEqual(tr.home_site({"journal": j[:2] + [{"type": "fork", "site": "ledger.example"}] + j[2:]}, "alice.example"), "ledger.example")
+
+    def test_member_alias(self):
+        import review_model as rm
+        names = ["Alice", "Bob", "David Bovill"]
+        self.assertEqual(rm.member_alias("David", names), "David Bovill")
+        self.assertEqual(rm.member_alias("Alice", names), "Alice")
+        self.assertEqual(rm.member_alias("Carol", names), "Carol")
+        self.assertEqual(rm.member_alias("David", ["David Bovill", "David Jones"]), "David")
+        st = rm.alias_state({"plan": {"2026-W39": {"David": (2.0, "x")}}, "approved": [{"member": "David"}]}, names)
+        self.assertEqual((list(st["plan"]["2026-W39"]), st["approved"][0]["member"]), (["David Bovill"], "David Bovill"))
+
     def test_occasions_of_a_recurring_page(self):
         fs = tr.page_transactions(self.recurring(), "alice.localhost:4242", "childcare-for-david")
         self.assertEqual([f["occasion"] for f in fs], [{"n": 1, "of": 3}, {"n": 2, "of": 3}, {"n": 3, "of": 3}])

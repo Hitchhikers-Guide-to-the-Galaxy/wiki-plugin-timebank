@@ -44,9 +44,12 @@ const entryWho = e => escape(partyName(e.counterparty))
 export const renderSummary = (model, context = []) => {
   const { site } = model
   const out = []
+  const ownerLink = model.owner ? pageLink(model.owner.name, site, context) : ''
   const owner = model.owner
-    ? `${escape(model.ownerName || model.owner.name)} — ${pageLink(model.owner.name, site, context)}`
-    : '<span style="color:#9b1c1c">no OWNER: line — add <code>OWNER: [[About Name]]</code></span>'
+    ? (model.ownerName
+        ? `${escape(model.ownerName)} — ${ownerLink}`
+        : `${ownerLink} <span style="color:#9b1c1c">names no owner — give it a Site Record with <code>owner: {name: …}</code></span>`)
+    : '<span style="color:#9b1c1c">no OWNER: line — add <code>OWNER: [[About]]</code></span>'
   out.push(para(`<b>Owner:</b> ${owner}. <b>Balance:</b> ${hours(model.given)} given, ${hours(model.received)} received, <b>net ${net(model.net)}</b> over ${plural(model.periods.length, 'period', 'periods')} (${plural(model.count, 'logged entry', 'logged entries')}).`))
   if (!model.periods.length) {
     out.push(para(`No period pages yet. A period page is titled <i>${escape(model.title)} YYYY-MM</i> — for example ${pageLink(`${model.title} ${new Date().toISOString().slice(0, 7)}`, site, context)} — and holds a ledger with its own START and END.`))
@@ -73,7 +76,7 @@ export const renderSummary = (model, context = []) => {
   return out.join('\n')
 }
 
-// The balance beside the owner, on their About page.
+// The balance beside the owner, on the site's About page.
 //   model = summariseLedger(...) + { title, slug, site, ownerName }
 export const renderBalance = (model, context = []) => {
   const who = model.ownerName ? escape(model.ownerName) : 'This owner'

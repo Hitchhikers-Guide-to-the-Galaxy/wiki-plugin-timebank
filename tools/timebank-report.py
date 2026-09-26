@@ -12,7 +12,9 @@ page once by its home site and slug; and writes, on the broker's site:
 
 A known ledger may be a summary ledger (PERIODS): its entries are read from its
 period pages ("Alice's Ledger 2026-09"), found by title prefix in its site's
-sitemap, and its OWNER: [[About Alice]] line names the member ("Alice"). Its
+sitemap, and its OWNER line names the member: OWNER: [[About]] (the default
+when the line is absent) reads the owner's name from the Site Record on the
+site's About page; an older OWNER: [[About Alice]] names "Alice". Its
 logged balance — given minus received over the period ledgers' written lines —
 is checked against the report's net per person and printed.
 
@@ -157,7 +159,11 @@ def read_ledgers(members: list[dict]) -> tuple[list[dict], list[str]]:
             got = period_pages(m["site"], page)
             periods = [ref["title"] for ref, _ in got]
             pages += [pg for _, pg in got]
-            owner = tr.owner_name(tr.extract_commands("\n".join(i.get("text", "") for i in page["story"] if i.get("type") == "timebank"))["owner"])
+            ref = tr.extract_commands("\n".join(i.get("text", "") for i in page["story"] if i.get("type") == "timebank"))["owner"]
+            about = None
+            if ref and ref.get("slug") == tr.ABOUT_REF["slug"]:  # OWNER: [[About]] — read its Site Record
+                about = fetch_page(ref["site"] if ref.get("external") else m["site"], ref["slug"])
+            owner = tr.owner_name(ref, about)
             if owner:
                 m["member"] = owner
         text = "\n".join(i.get("text", "") for pg in pages for i in pg.get("story", []) if i.get("type") == "timebank")
@@ -669,11 +675,12 @@ def review_model_step(a, domain: str, broker_site: str, members: list[dict], ts:
     xlsx = os.path.join(str(root), "assets", "review-model", "review-model.xlsx")
     names = [m["member"] for m in members]
     info = [{"member": m["member"], "site": m["site"], "url": page_url(m["site"], m["slug"])} for m in members]
-    state = rm.load_state(xlsx)
+    state = rm.alias_state(rm.load_state(xlsx), names)
     for week, rows in rm.DEFAULT_PLAN.items():
         if week not in state["plan"]:
-            state["plan"][week] = {m: rows[m] for m in names if m in rows}
+            state["plan"][week] = {rm.member_alias(k, names): v for k, v in rows.items() if rm.member_alias(k, names) in names}
     for week, member, hours, tasks in a.plan or []:
+        member = rm.member_alias(member, names)
         state["plan"].setdefault(week.upper(), {})[member] = (float(hours), tasks)
         print(f"  plan {week} {member}: {hours} hours — {tasks}")
     txs = review_txs(ts, members)
@@ -688,7 +695,8 @@ def review_model_step(a, domain: str, broker_site: str, members: list[dict], ts:
         if r and r["approved"]:
             approvals[week] = it["text"]
             if week not in done:
-                state["approved"] += rm.approve_rows(week, r["approved"]["on"], r["approved"]["by"], r["hours"], totals)
+                hours = [(rm.member_alias(m, names), h) for m, h in r["hours"]]
+                state["approved"] += rm.approve_rows(week, r["approved"]["on"], r["approved"]["by"], hours, totals)
                 done.add(week)
                 print(f"  burned {week}: approved on the report page on {r['approved']['on']} by {r['approved']['by']}")
     if a.approve:
