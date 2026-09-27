@@ -159,7 +159,20 @@ python3 tools/timebank-report.py --plan 2026-W40 Alice 3 "Seed swap stall; soup"
 python3 tools/timebank-report.py --approve 2026-W40 [--approved-on 2026-10-05] [--approver NAME]
 ```
 
-`--approve` burns a week once only: it writes the approval into the week's REVIEW item and the Approved sheet, then refreezes; a second approval is refused before anything is written. A timebank item holding `REVIEW: 2026-W40` on the weekly report shows the week's frozen Review rows and an **Approve the week** button — owner only; logged out it says so and saves nothing — which writes the same `APPROVED: YYYY-MM-DD by Name` text; the tool burns it on its next run. A timebank item holding `BOARD` draws, in plain SVG, hours per member, planned against actual per week and the shares from the model items on its own page, with a Full screen button — no workbook and no network needed.
+`--approve` burns a week once only: it writes the approval into the week's REVIEW item and the Approved sheet, then refreezes; a second approval is refused before anything is written. A timebank item holding `REVIEW: 2026-W40` on the weekly report shows the week's frozen Review rows and an **Approve the week** button — owner only; logged out it says so and saves nothing — which writes the same `APPROVED: YYYY-MM-DD by Name` text; the tool burns it on its next run. A timebank item holding `BOARD` draws the Review Board from the model items on its own page — no workbook and no network needed.
+
+## The Review Deck (0.9.0)
+
+The board is a deck in the page: one 16:9 slide at a time, ‹ and › (or the arrow keys, Home and End once the board has focus), a counter, **Full screen** (or F), which letterboxes the whole slide on black and never clips, and **All slides**, which stacks them with each capped at the viewport's height less 80px. Every slide is drawn by `src/client/slides.js` into one 1280 by 720 frame — Wiki Deck's WIDTH and HEIGHT — with `preserveAspectRatio="xMidYMid meet"`, a title band, the chart and a footer, fonts fixed for that frame (titles 44, labels 26, values 24). The slides: **Weekly Review YYYY-Www** (the week, attendance and mood lines from the last meeting), **Hours given per member** (at most eight bars), **Planned against actual, per week** (the last eight weeks), **Shares of dynamic equity** and **Ledger check** (given, received, net and awaiting per member). The board reads optional lines under `BOARD`: `WEEK 2026-W40`, `ATTENDANCE David, Max, Mitch`, `MOOD Max: one line`; the ledger check comes from a table item captioned `Ledger check, YYYY-Www` the report tool keeps beside the model items.
+
+```bash
+python3 tools/timebank-report.py --deck 2026-W40            # implies --review-model
+node ~/Code/wiki-deck/bin/wiki-deck.js install http://david.localhost/review-deck-2026-w40.json
+```
+
+`--deck WEEK` writes, on the broker's site, one page per slide — **Review Slide Wnn N — Title**, carrying ONE svg item (the slide, drawn by `tools/deck-slides.mjs` with the board's own code) and a `# Notes` section with the figures as prose, which Wiki Deck turns into speaker notes — the **Review Deck YYYY-Www** manifest (`DECK`, `THEME [[Review Deck Theme]]`, `TITLE HIDE`, `WIDTH 1280`, `HEIGHT 720`, `LIVE https://live.pi5.private.fish`, `PRESENTERS david` — relay logins, not display names — and one `SLIDE` per page) and, once, a **Review Deck Theme** page. Attendance and mood lines come from the latest **Review Meeting YYYY-Www** page before the week (`In the room: David, Max, Mitch.` and one `David's mood: …` item per member). Pages are reconciled in place on a rerun. `wiki-deck install` compiles the deck into the manifest page's assets and adds a `stage` item: ⤢ Present for full screen, `?print-pdf` for a PDF, and every viewer follows the presenter over the relay. With `--out DIR` the pages go to a staging copy as usual; install them with `wiki-deck install https://SITE/review-deck-….json --farm DIR` after the pages are live.
+
+`--masks [MAP]` draws the fish masks instead of names, for anything promoted to a public site: MAP is a JSON file (default `~/.config/timebank/masks.json`, never in this repository or on a public site) or `Name=Fish,…`; a name matches exactly or by its first word. A masked deck drops LIVE, PRESENTERS and the site name. Tests: `test/slides.test.js` (geometry, fonts, notes, masks, the CLI drawing the same bytes) and `tools/test_review_deck.py`.
 
 ## Supported Time Formats
 
@@ -172,7 +185,7 @@ npm install
 npm run build
 ```
 
-The build step runs tests then bundles `src/client/timebank.js` (with `parse.js`, `verify.js`, `tool.js`, `txn.js`, `links.js`, `periods.js`, `views.js` and `transaction.js`) → `client/timebank.js` via esbuild. `transaction/` is the wiki-plugin-transaction package; pack it with `npm pack ./transaction`.
+The build step runs tests then bundles `src/client/timebank.js` (with `parse.js`, `verify.js`, `tool.js`, `txn.js`, `links.js`, `periods.js`, `views.js`, `review.js`, `slides.js` and `transaction.js`) → `client/timebank.js` via esbuild. `transaction/` is the wiki-plugin-transaction package; pack it with `npm pack ./transaction`.
 
 ## Install into Federated Wiki
 

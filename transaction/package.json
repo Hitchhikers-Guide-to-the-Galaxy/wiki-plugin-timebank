@@ -1,6 +1,6 @@
 {
   "name": "wiki-plugin-transaction",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Federated Wiki plugin — the transaction item of a Time Transaction page; its code ships in wiki-plugin-timebank",
   "keywords": ["wiki", "federated wiki", "plugin", "timebank", "transaction"],
   "author": { "name": "David Bovill", "url": "https://github.com/opn" },

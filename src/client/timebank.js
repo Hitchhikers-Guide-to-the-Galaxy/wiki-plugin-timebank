@@ -31,6 +31,7 @@ import * as links from './links.js'
 import * as periods from './periods.js'
 import * as views from './views.js'
 import * as review from './review.js'
+import * as slides from './slides.js'
 import { transactionPlugin } from './transaction.js'
 
 const {
@@ -47,7 +48,8 @@ const {
 } = periods
 const { renderSummary, renderBalance, renderIndex } = views
 const { periodOf } = verify
-const { parseReview, approvalText, modelOf, reviewRows, hoursToApprove, boardData, barsSvg, plannedActualSvg, PALETTE } = review
+const { parseReview, approvalText, modelOf, reviewRows, hoursToApprove } = review
+const { boardSlides, boardMeta } = slides
 
 // --- Markup ---
 
@@ -71,6 +73,23 @@ const CSS = `
 .timebank-pulled-row td { background: #f3f7fc; }
 .timebank-awaiting-row td { background: #fffaf0; }
 .timebank-tool .timebank-badge { cursor: default; }
+.timebank-board { margin: 8px 0; font-family: sans-serif; font-size: 14px; background: #fff; outline: none; }
+.timebank-board-bar { display: flex; align-items: center; gap: 6px; margin: 4px 0; flex-wrap: wrap; }
+.timebank-board-bar button { font-size: 13px; padding: 2px 8px; }
+.timebank-board-counter { min-width: 3.5em; text-align: center; color: #333; font-variant-numeric: tabular-nums; }
+.timebank-board-hint { color: #777; font-size: 12px; }
+.timebank-board-stage { width: 100%; aspect-ratio: 16 / 9; background: #fff; border: 1px solid #d6dbe1; box-sizing: border-box; overflow: hidden; }
+.timebank-board-stage svg, .timebank-board-slide svg { display: block; width: 100%; height: 100%; }
+.timebank-board-all { display: none; }
+.timebank-board-slide { aspect-ratio: 16 / 9; width: 100%; max-height: calc(100vh - 80px); max-width: calc((100vh - 80px) * 16 / 9); margin: 0 auto 10px; border: 1px solid #d6dbe1; box-sizing: border-box; }
+.timebank-board-showall .timebank-board-stage { display: none; }
+.timebank-board-showall .timebank-board-all { display: block; }
+.timebank-board:fullscreen { width: 100vw; height: 100vh; margin: 0; background: #000; display: flex; align-items: center; justify-content: center; }
+.timebank-board:fullscreen .timebank-board-stage { display: block; width: min(100vw, calc(100vh * 16 / 9)); height: auto; max-width: 100vw; max-height: 100vh; border: 0; }
+.timebank-board:fullscreen .timebank-board-all { display: none; }
+.timebank-board:fullscreen .timebank-board-bar { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); margin: 0; padding: 4px 8px; background: rgba(255,255,255,0.85); border-radius: 6px; opacity: 0.12; transition: opacity 0.2s; z-index: 2; }
+.timebank-board:fullscreen .timebank-board-bar:hover { opacity: 1; }
+.timebank-board:fullscreen .timebank-board-hint { display: none; }
 `
 
 const ensureStyle = () => {
@@ -982,41 +1001,85 @@ const onApprove = async ($item, item, $out) => {
     : 'Changed in this browser only: the server did not confirm the save. Log in as the site owner and approve again.')
 }
 
-const drawBoard = $item => {
-  const data = boardData(modelsOnPage($item))
-  const $out = $item.find('.timebank-board-charts')
-  if (!data.weeks.length && !data.share.length) {
-    return $out.html('<p style="margin:6px 0">No frozen figures on this page yet: the board draws the model items that freeze the Review and Equity tabs of the Review Model.</p>')
-  }
-  const members = data.perMember.map(p => p.member)
-  const colour = m => PALETTE[Math.max(0, members.indexOf(m)) % PALETTE.length]
-  const weeks = data.weeks.map(w => w.week)
-  const span = weeks.length ? `${weeks[0]} to ${weeks[weeks.length - 1]}` : ''
-  const parts = [
-    barsSvg(`Hours given per member, ${span}`, data.perMember.map(p => ({ label: p.member, value: p.actual, color: colour(p.member) }))),
-    plannedActualSvg('Planned against actual, per week', data.weeks, members),
-    data.share.length ? barsSvg('Shares of dynamic equity', data.share.map(s => ({ label: s.member, value: s.share, color: colour(s.member) })), { unit: '%' }) : ''
-  ]
-  $out.html(parts.filter(Boolean).map(p => `<div style="margin:10px 0">${p}</div>`).join(''))
+// The board is a deck in the page (0.9.0): one 16:9 slide at a time, previous
+// and next, a counter and the arrow keys; Full screen letterboxes the slide on
+// black; All slides stacks them, each capped to the viewport.
+const ledgerTableOnPage = $item => $item.parents('.page').find('.item.table').toArray()
+  .map(el => $(el).data('item')).find(it => it && /^CAPTION\s+Ledger check/im.test(it.text || '')) || null
+
+const showSlide = ($item, i) => {
+  const deck = $item.data('timebankDeck') || []
+  if (!deck.length) return
+  const n = Math.max(0, Math.min(deck.length - 1, i))
+  $item.data('timebankSlide', n)
+  $item.find('.timebank-board-stage').html(deck[n].svg)
+  $item.find('.timebank-board-counter').text(`${n + 1} / ${deck.length}`)
+  $item.find('button[data-timebank-action="prev"]').prop('disabled', n === 0)
+  $item.find('button[data-timebank-action="next"]').prop('disabled', n === deck.length - 1)
 }
 
-const emitBoard = $item => {
-  $item.append('<div class="timebank-board" style="margin:8px 0;font-family:sans-serif;font-size:14px;background:#fff">' +
-    '<p style="margin:4px 0"><button data-timebank-action="fullscreen">Full screen</button> <span style="color:#666">drawn from the frozen figures on this page — no workbook, no network</span></p>' +
-    '<div class="timebank-board-charts"><p style="margin:6px 0;color:#666">Drawing…</p></div></div>')
-  setTimeout(() => drawBoard($item), 0)
+const drawBoard = ($item, item) => {
+  const models = $item.parents('.page').find('.item.model').toArray()
+    .map(el => ($(el).data('item') || {}).text).filter(Boolean)
+  const ledger = ledgerTableOnPage($item)
+  const meta = { ...boardMeta(item.text), site: siteOf($item), page: 'Review Board' }
+  const deck = boardSlides(models, ledger && ledger.text, meta)
+  const $el = $item.find('.timebank-board')
+  if (!models.length) {
+    $item.find('.timebank-board-stage').html('<p style="margin:12px;color:#666">No frozen figures on this page yet: the board draws the model items that freeze the Review and Equity tabs of the Review Model.</p>')
+    return
+  }
+  $item.data('timebankDeck', deck)
+  $el.find('.timebank-board-all').html(deck.map(d => `<div class="timebank-board-slide">${d.svg}</div>`).join(''))
+  showSlide($item, $item.data('timebankSlide') || 0)
+}
+
+const emitBoard = ($item, item) => {
+  $item.append('<div class="timebank-board" tabindex="0">' +
+    '<div class="timebank-board-bar">' +
+    '<button data-timebank-action="prev" title="Previous slide (left arrow)">‹</button>' +
+    '<span class="timebank-board-counter">…</span>' +
+    '<button data-timebank-action="next" title="Next slide (right arrow)">›</button>' +
+    '<button data-timebank-action="fullscreen" title="Full screen (F)">Full screen</button>' +
+    '<button data-timebank-action="all" title="Show every slide">All slides</button>' +
+    '<span class="timebank-board-hint">drawn from the frozen figures on this page — no workbook, no network</span></div>' +
+    '<div class="timebank-board-stage"><p style="margin:12px;color:#666">Drawing…</p></div>' +
+    '<div class="timebank-board-all"></div></div>')
+  setTimeout(() => drawBoard($item, item), 0)
+}
+
+const toggleFullscreen = $item => {
+  const el = $item.find('.timebank-board')[0]
+  if (!el) return
+  if (document.fullscreenElement) return document.exitFullscreen().catch(() => {})
+  if (el.requestFullscreen) el.requestFullscreen().then(() => el.focus()).catch(() => {})
 }
 
 const onBoardClick = ($item, e) => {
   e.preventDefault()
   e.stopPropagation()
-  const el = $item.find('.timebank-board')[0]
-  if (!el) return
-  if (document.fullscreenElement) return document.exitFullscreen()
-  el.style.padding = '24px'
-  const done = () => { if (!document.fullscreenElement) el.style.padding = '' }
-  document.addEventListener('fullscreenchange', done, { once: true })
-  if (el.requestFullscreen) el.requestFullscreen().catch(() => {})
+  const action = $(e.currentTarget).attr('data-timebank-action')
+  const at = $item.data('timebankSlide') || 0
+  if (action === 'prev') return showSlide($item, at - 1)
+  if (action === 'next') return showSlide($item, at + 1)
+  if (action === 'fullscreen') return toggleFullscreen($item)
+  if (action === 'all') {
+    const $b = $item.find('.timebank-board').toggleClass('timebank-board-showall')
+    $(e.currentTarget).text($b.hasClass('timebank-board-showall') ? 'One slide' : 'All slides')
+  }
+}
+
+const onBoardKey = ($item, e) => {
+  const at = $item.data('timebankSlide') || 0
+  const k = e.key
+  if (['ArrowRight', 'PageDown', ' '].includes(k)) showSlide($item, at + 1)
+  else if (['ArrowLeft', 'PageUp'].includes(k)) showSlide($item, at - 1)
+  else if (k === 'Home') showSlide($item, 0)
+  else if (k === 'End') showSlide($item, ($item.data('timebankDeck') || []).length - 1)
+  else if (k === 'f' || k === 'F') toggleFullscreen($item)
+  else return
+  e.preventDefault()
+  e.stopPropagation()
 }
 
 // --- Plugin ---
@@ -1108,7 +1171,9 @@ const bind = ($item, item) => {
     return $item.dblclick(() => wiki.textEditor($item, item))
   }
   if (mode === 'board') {
-    $item.on('click', 'button[data-timebank-action="fullscreen"]', e => onBoardClick($item, e))
+    $item.on('click', 'button[data-timebank-action]', e => onBoardClick($item, e))
+    $item.on('keydown', '.timebank-board', e => onBoardKey($item, e))
+    $item.on('dblclick', '.timebank-board-bar, .timebank-board-stage', e => e.stopPropagation())
     return $item.dblclick(() => wiki.textEditor($item, item))
   }
   if (mode === 'periods') {
@@ -1144,5 +1209,5 @@ if (typeof window !== 'undefined') {
 }
 
 export const timebank = typeof window == 'undefined'
-  ? { ...parse, ...verify, ...tool, ...txn, ...links, ...periods, ...views, ...review }
+  ? { ...parse, ...verify, ...tool, ...txn, ...links, ...periods, ...views, ...review, ...slides }
   : undefined

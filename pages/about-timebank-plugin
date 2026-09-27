@@ -189,7 +189,7 @@
     {
       "type": "markdown",
       "id": "85200a846f4c71fc",
-      "text": "On a weekly report a timebank item holding `REVIEW: 2026-W40` reads the model item above it that freezes the week's rows of the Review Model's Review tab \u2014 planned, actual, variance \u2014 and offers **Approve the week**. Only the site owner can approve; logged out, it says so and saves nothing. Approving writes `APPROVED: 2026-10-05 by David Bovill` and each member's hours into the item, once; the broker's report tool burns them into the workbook's Approved sheet and refreezes. An item holding `BOARD` draws the [[Review Board]] from the model items on its own page: hours per member, planned against actual per week, and the shares \u2014 plain SVG, so the room needs no network."
+      "text": "On a weekly report a timebank item holding `REVIEW: 2026-W40` reads the model item above it that freezes the week's rows of the Review Model's Review tab \u2014 planned, actual, variance \u2014 and offers **Approve the week**. Only the site owner can approve; logged out, it says so and saves nothing. Approving writes `APPROVED: 2026-10-05 by David Bovill` and each member's hours into the item, once; the broker's report tool burns them into the workbook's Approved sheet and refreezes. An item holding `BOARD` draws the [[Review Board]] from the model items on its own page as a deck of 16:9 slides (0.9.0): the week, hours given per member, planned against actual per week, the shares and a ledger check, one slide at a time with \u2039 \u203a and the arrow keys, **Full screen** letterboxed on black, and **All slides**. Plain SVG in a 1280 by 720 frame, so the room needs no network and nothing clips. The report tool's `--deck 2026-W40` writes the same slides as pages \u2014 one svg item and speaker notes each \u2014 and a Review Deck manifest that [[Wiki Deck]] compiles into a presentable, followable deck."
     },
     {
       "type": "markdown",
@@ -885,6 +885,17 @@
       },
       "date": 1790437123309,
       "provenance": "Version 0.8.0."
+    },
+    {
+      "type": "edit",
+      "id": "85200a846f4c71fc",
+      "item": {
+        "type": "markdown",
+        "id": "85200a846f4c71fc",
+        "text": "On a weekly report a timebank item holding `REVIEW: 2026-W40` reads the model item above it that freezes the week's rows of the Review Model's Review tab \u2014 planned, actual, variance \u2014 and offers **Approve the week**. Only the site owner can approve; logged out, it says so and saves nothing. Approving writes `APPROVED: 2026-10-05 by David Bovill` and each member's hours into the item, once; the broker's report tool burns them into the workbook's Approved sheet and refreezes. An item holding `BOARD` draws the [[Review Board]] from the model items on its own page as a deck of 16:9 slides (0.9.0): the week, hours given per member, planned against actual per week, the shares and a ledger check, one slide at a time with \u2039 \u203a and the arrow keys, **Full screen** letterboxed on black, and **All slides**. Plain SVG in a 1280 by 720 frame, so the room needs no network and nothing clips. The report tool's `--deck 2026-W40` writes the same slides as pages \u2014 one svg item and speaker notes each \u2014 and a Review Deck manifest that [[Wiki Deck]] compiles into a presentable, followable deck."
+      },
+      "date": 1790508989393,
+      "provenance": "Edited by Claude Code (claude-opus-5-5) for wiki-plugin-timebank 0.9.0, the Review Meeting Plan."
     }
   ],
   "plugin": "timebank"
