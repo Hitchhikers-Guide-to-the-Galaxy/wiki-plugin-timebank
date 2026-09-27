@@ -126,6 +126,35 @@ def meeting_lines(page: dict | None) -> dict:
     return out
 
 
+PLACEHOLDER_LINK = re.compile(r"\b(Weekly Plan|Timebank Weekly Report|Review Deck|Review Meeting) YYYY-Www(\+1)?")
+
+
+def next_week(week: str) -> str:
+    import datetime as _dt
+    y, w = int(week[:4]), int(week.split("W")[1])
+    d = _dt.date.fromisocalendar(y, w, 1) + _dt.timedelta(days=7)
+    iy, iw, _ = d.isocalendar()
+    return f"{iy}-W{iw:02d}"
+
+
+def fill_template_text(text: str, week: str) -> str:
+    """A Review Meeting Template's placeholders for one week: 'Weekly Plan
+    YYYY-Www' becomes [[Weekly Plan 2026-W40]], 'YYYY-Www+1' the week after."""
+    def link(m):
+        return f"[[{m.group(1)} {next_week(week) if m.group(2) else week}]]"
+    return PLACEHOLDER_LINK.sub(link, text).replace("YYYY-Www+1", next_week(week)).replace("YYYY-Www", week)
+
+
+def board_text(week: str, attendance: list[str], mood: list[list[str]]) -> str:
+    """The Review Board's BOARD item: the week and last meeting's lines, which
+    the board draws on its title slide as the deck does."""
+    lines = ["BOARD", f"WEEK {week}"]
+    if attendance:
+        lines.append("ATTENDANCE " + ", ".join(attendance))
+    lines += [f"MOOD {who}: {line}" for who, line in mood]
+    return "\n".join(lines)
+
+
 def previous_meeting(slugs: list[str], week: str) -> str | None:
     """The latest review-meeting-YYYY-wNN slug before this week."""
     key = week.lower()

@@ -62,6 +62,22 @@ class Meeting(unittest.TestCase):
         self.assertIsNone(rd.previous_meeting(slugs, "2026-W38"))
 
 
+class Template(unittest.TestCase):
+    def test_fill(self):
+        t = "- The plan: Weekly Plan YYYY-Www; the report: Timebank Weekly Report YYYY-Www\n- Next: Weekly Plan YYYY-Www+1"
+        self.assertEqual(rd.fill_template_text(t, "2026-W40"),
+                         "- The plan: [[Weekly Plan 2026-W40]]; the report: [[Timebank Weekly Report 2026-W40]]\n- Next: [[Weekly Plan 2026-W41]]")
+        self.assertEqual(rd.next_week("2026-W53"), "2027-W01")
+        self.assertEqual(rd.next_week("2026-W52"), "2026-W53")
+
+
+class Board(unittest.TestCase):
+    def test_board_text(self):
+        self.assertEqual(rd.board_text("2026-W40", ["David", "Max"], [["Max", "tired"]]),
+                         "BOARD\nWEEK 2026-W40\nATTENDANCE David, Max\nMOOD Max: tired")
+        self.assertEqual(rd.board_text("2026-W40", [], []), "BOARD\nWEEK 2026-W40")
+
+
 class Masks(unittest.TestCase):
     def test_inline_and_file(self):
         self.assertEqual(rd.load_masks("David=Koi,Max=Pufferfish"), {"David": "Koi", "Max": "Pufferfish"})

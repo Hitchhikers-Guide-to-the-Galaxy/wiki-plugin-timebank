@@ -885,6 +885,51 @@ def write_manifest(domain: str, week: str, text: str, masked: bool, write: bool)
     return "created"
 
 
+def write_meeting_page(domain: str, week: str, write: bool) -> str:
+    """Review Meeting <week> from the site's Review Meeting Template: the story
+    cloned, its YYYY-Www placeholders filled and linked. Once written the page
+    is the meeting's record, never rewritten."""
+    title = rd.meeting_title(week)
+    slug = fedwiki.as_slug(title)
+    if load_or_none(domain, slug):
+        return "kept (the meeting's record)"
+    tpl = load_or_none(domain, "review-meeting-template")
+    if not tpl:
+        return "no Review Meeting Template on the site"
+    story = []
+    for it in tpl["story"]:
+        it = {k: v for k, v in it.items() if k != "id"}
+        it["id"] = fedwiki.nid()
+        if it.get("text"):
+            it["text"] = rd.fill_template_text(it["text"], week)
+        story.append(it)
+    mon, sun = tr.week_bounds(week)
+    story[0]["text"] = (f"The [[Weekly Review]] of ISO week {week}, {human_day(mon)} to {human_day(sun)}, held in the [[Review Room]] with "
+                        f"[[{rd.deck_title(week)}]] on the stage. This page is the meeting's record: attendance from the room, a mood line "
+                        f"each, the decisions and actions, and the approval of the week.")
+    page = fedwiki.make_page(title, story, provenance=DECK_PROV + " Made from the [[Review Meeting Template]].")
+    if write:
+        fedwiki.save_page(fedwiki.page_path(domain, slug, FARM), page)
+        seed_neighbours(domain, slug, NEIGHBOURS_EXTRA)
+    return "created from the template"
+
+
+def room_on_deck(domain: str, week: str, write: bool) -> str:
+    """The Review Room's stage presents the latest week's deck."""
+    page = load_or_none(domain, "review-room")
+    if not page:
+        return "no Review Room page"
+    href = f"/assets/{fedwiki.as_slug(rd.deck_title(week))}/{fedwiki.as_slug(rd.deck_title(week))}.html"
+    item = find_item(page, lambda i: i.get("type") == "stage")
+    if not item:
+        return "no stage item (left alone)"
+    text = f"TITLE Weekly Review {week}\nHTML {href}"
+    changed = set_item_text(page, item, text, DECK_PROV)
+    if changed and write:
+        fedwiki.save_page(fedwiki.page_path(domain, "review-room", FARM), page)
+    return f"stage now presents {rd.deck_title(week)}" if changed else "stage unchanged"
+
+
 def write_deck(a, domain: str, broker_site: str, members: list[dict], weeks: dict, stamp: str, write: bool) -> None:
     week = a.deck.upper()
     masks = rd.load_masks(a.masks) if a.masks is not None else None
@@ -898,6 +943,11 @@ def write_deck(a, domain: str, broker_site: str, members: list[dict], weeks: dic
     meta = {"week": week, "site": None if masks else broker_site, "broker": a.broker, "generated": dt.date.today().strftime("%-d %B %Y"),
             "page": rd.deck_title(week), "attendance": lines["attendance"], "mood": lines["mood"], "masks": masks}
     slides = rd.render(models, ledger, meta)
+    if not masks and board:
+        it = find_item(board, lambda i: i.get("type") == "timebank" and re.match(r"^BOARD\b", i.get("text") or ""))
+        if it and set_item_text(board, it, rd.board_text(week, lines["attendance"], lines["mood"]), DECK_PROV) and write:
+            fedwiki.save_page(fedwiki.page_path(domain, "review-board", FARM), board)
+            print(f"  Review Board: BOARD item now draws {week}" + (" with the last meeting's lines" if prev else ""))
     titles = [rd.slide_title(week, n, sl["key"]) for n, sl in enumerate(slides, 1)]
     print(f"  Review Deck {week}: {len(slides)} slides" + (f"; attendance and mood from {prev}" if prev else "; no earlier Review Meeting page") +
           ("; names masked" if masks else ""))
@@ -906,6 +956,9 @@ def write_deck(a, domain: str, broker_site: str, members: list[dict], weeks: dic
     text = rd.manifest_text(week, titles, presenters=None if masks else (a.presenters or None), relay=None if masks else rd.RELAY)
     print(f"    {rd.deck_title(week)}: {write_manifest(domain, week, text, bool(masks), write)}")
     print(f"    {rd.THEME_TITLE}: {ensure_theme(domain, write)}")
+    if not masks:
+        print(f"    {rd.meeting_title(week)}: {write_meeting_page(domain, week, write)}")
+        print(f"    Review Room: {room_on_deck(domain, week, write)}")
     print(f"    compile: node ~/Code/wiki-deck/bin/wiki-deck.js install {'http' if domain.endswith('localhost') else 'https'}://{domain}/{fedwiki.as_slug(rd.deck_title(week))}.json"
           + (f" --farm {FARM}" if FARM else ""))
 

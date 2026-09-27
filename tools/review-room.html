@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Room</title>
+<style>
+  /* The Review Room: an audio-first VDO.Ninja room beside the Review Deck.
+     vdo.ninja carries the voices (one guest iframe in a native &room=, its UI
+     stripped with &cleanoutput); everything else on this page is ours: the
+     name, the controls, who is in the room, the attendance line and chat.
+     Hosted handshake, through vdo.ninja's own iframe and its iframe API only. */
+  :root { --bg: #f7f8fa; --panel: #fff; --line: #d6dbe1; --ink: #1f2933; --dim: #5f6b7a; --accent: #20364f; --live: #3a9a5b; --warn: #b8466a; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  #wrap { padding: 10px 12px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
+  h1 { font-size: 15px; margin: 0; color: var(--accent); }
+  .dim { color: var(--dim); font-size: 12px; }
+  input[type=text] { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+  #name { width: 11em; }
+  button { font: inherit; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.on { background: #e8f3ec; border-color: var(--live); }
+  button.off { background: #fbecef; border-color: var(--warn); }
+  #feedbox { position: relative; height: 132px; background: #10131a; border-radius: 8px; overflow: hidden; display: none; }
+  #feedbox.big { height: 320px; }
+  #feedbox iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  #roster { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 2px 9px; border-radius: 12px; background: #eef2f6; border: 1px solid var(--line); font-size: 13px; }
+  .chip.me { border-color: var(--accent); }
+  .chip.speaking { box-shadow: 0 0 0 2px var(--live); }
+  #attendance { font-weight: 600; }
+  #chat { display: none; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  #chat.open { display: block; }
+  #msgs { max-height: 150px; overflow-y: auto; padding: 6px 8px; }
+  .msg { margin: 2px 0; } .msg b { color: var(--accent); } .msg time { color: var(--dim); font-size: 11px; margin-left: 6px; }
+  #chatform { display: flex; gap: 6px; padding: 6px; border-top: 1px solid var(--line); }
+  #chatIn { flex: 1; }
+  #status { min-height: 1.2em; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="row"><h1>Review Room</h1><span class="dim" id="roomtxt"></span></div>
+  <div class="row" id="joinrow">
+    <input id="name" type="text" placeholder="Your name" maxlength="24" autocomplete="name">
+    <button id="btnJoin" class="primary" disabled>Join with microphone</button>
+    <span class="dim">camera stays off until you turn it on</span>
+  </div>
+  <div class="row" id="controls" hidden>
+    <button id="btnMic" class="on" title="Microphone">Mic on</button>
+    <button id="btnCam" class="off" title="Camera">Camera off</button>
+    <button id="btnSize" title="Bigger or smaller thumbnails">Bigger</button>
+    <button id="btnChat" title="Chat">Chat</button>
+    <button id="btnLeave">Leave</button>
+  </div>
+  <div id="feedbox"></div>
+  <div class="row" style="margin-top:8px"><span class="dim">In the room now:</span><span id="roster"><span class="dim">nobody yet</span></span></div>
+  <div class="row"><span id="attendance">In the room: —</span>
+    <button id="btnCopy" disabled title="Copy the attendance line">Copy</button>
+    <button id="btnWrite" disabled title="Write it into the Review Meeting page open beside this one (site owner only)">Write to meeting page</button>
+  </div>
+  <div id="chat"><div id="msgs"></div><form id="chatform"><input id="chatIn" type="text" placeholder="Message everyone in the room" maxlength="400"><button>Send</button></form></div>
+  <div class="dim" id="status"></div>
+</div>
+<script>
+(() => {
+  const VDO = 'https://vdo.ninja/'
+  const $ = id => document.getElementById(id)
+  const q = new URLSearchParams(location.search)
+  // The room is named after the page: slug without hyphens, then the first two
+  // labels of the host — vdo.ninja keeps 30 alphanumeric characters.
+  const slug = (q.get('page') || 'review-room').replace(/[^a-z0-9-]/gi, '')
+  const derived = slug.replace(/-/g, '') + '_' + location.hostname.split('.').slice(0, 2).join('')
+  const ROOM = (q.get('room') || derived).replace(/\W+/g, '_').slice(0, 30)
+  $('roomtxt').textContent = 'room ' + ROOM + ' · hosted vdo.ninja handshake, peer-to-peer audio'
+
+  const clean = v => String(v || '').replace(/[<>&"'`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 24)
+  const store = { get: k => { try { return localStorage.getItem(k) } catch { return null } }, set: (k, v) => { try { localStorage.setItem(k, v) } catch {} } }
+  const sess = { get: k => { try { return sessionStorage.getItem(k) } catch { return null } }, set: (k, v) => { try { sessionStorage.setItem(k, v) } catch {} } }
+  $('name').value = clean(q.get('name') || store.get('review-room.name') || '')
+  const nameOk = () => { $('btnJoin').disabled = !clean($('name').value) }
+  $('name').addEventListener('input', nameOk); nameOk()
+  const status = t => { $('status').textContent = t }
+
+  const policy = document.permissionsPolicy || document.featurePolicy
+  const framed = window.self !== window.top
+  if (framed && (location.origin === 'null' || (policy && !policy.allowsFeature('microphone')))) {
+    status('This frame has no microphone permission: the frame item needs the line ALLOW camera microphone autoplay fullscreen display-capture. Or open this room in its own tab.')
+  }
+
+  // Our own stream id, stable for this tab so a reload rejoins as the same guest.
+  let myId = sess.get('review-room.id')
+  if (!myId) { myId = 'rr' + Array.from(crypto.getRandomValues(new Uint8Array(5)), b => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join(''); sess.set('review-room.id', myId) }
+
+  let feed = null, myName = '', mic = true, cam = false, poll = null
+  const seen = new Map()      // streamID -> label, everyone seen this session: the attendance
+  let now = new Map()         // streamID -> label, in the room right now
+  const speaking = new Set()
+
+  const resize = () => { if (framed) parent.postMessage({ action: 'resize', height: document.body.scrollHeight + 4 }, '*') }
+  const send = msg => { if (feed && feed.contentWindow) feed.contentWindow.postMessage(msg, '*') }
+
+  const attendanceLine = () => {
+    const names = [myName, ...seen.values()].filter(Boolean)
+    const uniq = [...new Set(names)]
+    return uniq.length ? 'In the room: ' + uniq.join(', ') + '.' : 'In the room: —'
+  }
+  const paint = () => {
+    const chips = []
+    if (feed) chips.push(`<span class="chip me" title="you">${myName} (you)</span>`)
+    for (const [id, label] of now) chips.push(`<span class="chip${speaking.has(id) ? ' speaking' : ''}" title="${id}">${clean(label) || id}</span>`)
+    $('roster').innerHTML = chips.length ? chips.join('') : '<span class="dim">nobody yet</span>'
+    $('attendance').textContent = attendanceLine()
+    $('btnCopy').disabled = $('btnWrite').disabled = !feed
+    resize()
+  }
+
+  function join () {
+    myName = clean($('name').value); if (!myName) return
+    store.set('review-room.name', myName)
+    const src = `${VDO}?room=${encodeURIComponent(ROOM)}&push=${myId}&label=${encodeURIComponent(myName)}` +
+      '&webcam&autostart&videomute&minipreview&cleanoutput&showlabels&transparent&noheader'
+    feed = document.createElement('iframe')
+    feed.setAttribute('allow', 'camera; microphone; autoplay; fullscreen; display-capture')
+    feed.src = src
+    $('feedbox').appendChild(feed); $('feedbox').style.display = 'block'
+    $('joinrow').hidden = true; $('controls').hidden = false
+    mic = true; cam = false; paintButtons()
+    status('Joining room ' + ROOM + ' as ' + myName + ' — allow the microphone (and camera) when the browser asks. Your camera stays off.')
+    poll = setInterval(() => send({ getStreamIDs: true }), 2500)
+    setTimeout(() => send({ getLoudness: true }), 2500)
+    paint()
+  }
+  function leave () {
+    send({ close: true })
+    clearInterval(poll); poll = null
+    if (feed) feed.remove(); feed = null
+    now = new Map(); speaking.clear()
+    $('feedbox').style.display = 'none'; $('joinrow').hidden = false; $('controls').hidden = true
+    status('You left the room. The attendance line keeps everyone seen while you were in it.')
+    paint()
+  }
+  const paintButtons = () => {
+    $('btnMic').textContent = mic ? 'Mic on' : 'Mic muted'; $('btnMic').className = mic ? 'on' : 'off'
+    $('btnCam').textContent = cam ? 'Camera on' : 'Camera off'; $('btnCam').className = cam ? 'on' : 'off'
+  }
+
+  $('btnJoin').onclick = join
+  $('name').addEventListener('keydown', e => { if (e.key === 'Enter' && !$('btnJoin').disabled) join() })
+  $('btnLeave').onclick = leave
+  $('btnMic').onclick = () => { mic = !mic; send({ mic }); paintButtons() }
+  $('btnCam').onclick = () => { cam = !cam; send({ camera: cam }); paintButtons() }
+  $('btnSize').onclick = () => { const big = $('feedbox').classList.toggle('big'); $('btnSize').textContent = big ? 'Smaller' : 'Bigger'; resize() }
+  $('btnChat').onclick = () => { $('chat').classList.toggle('open'); $('btnChat').className = $('chat').classList.contains('open') ? 'on' : ''; resize(); if ($('chat').classList.contains('open')) $('chatIn').focus() }
+
+  // —— chat over vdo.ninja's data channels ——
+  const addMsg = (who, text) => {
+    const el = document.createElement('div'); el.className = 'msg'
+    const b = document.createElement('b'); b.textContent = who + ': '; el.appendChild(b)
+    el.appendChild(document.createTextNode(text))
+    const t = document.createElement('time'); t.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); el.appendChild(t)
+    $('msgs').appendChild(el); $('msgs').scrollTop = $('msgs').scrollHeight
+  }
+  $('chatform').onsubmit = e => {
+    e.preventDefault()
+    const text = $('chatIn').value.trim(); if (!text || !feed) return
+    send({ sendChat: text }); addMsg(myName, text); $('chatIn').value = ''
+  }
+
+  // —— events from vdo.ninja ——
+  window.addEventListener('message', e => {
+    if (!feed || e.source !== feed.contentWindow) return
+    const d = e.data || {}
+    if (d.streamIDs && typeof d.streamIDs === 'object') {
+      const next = new Map()
+      for (const [id, label] of Object.entries(d.streamIDs)) {
+        if (id === myId) continue
+        const name = clean(label) || id
+        next.set(id, name); seen.set(id, name)
+      }
+      now = next; paint()
+    }
+    if (d.action === 'started-camera' || d.action === 'push-connection' || d.action === 'view-connection' || d.action === 'end-view-connection') {
+      if (d.action === 'started-camera') { status('In room ' + ROOM + ' as ' + myName + '. Microphone on, camera off.'); if (!cam) send({ camera: false }); if (!mic) send({ mic: false }) }
+      setTimeout(() => send({ getStreamIDs: true }), 400)
+    }
+    const loud = d.loudness || (d.action === 'loudness' ? d.value : null)
+    if (loud && typeof loud === 'object') {
+      speaking.clear()
+      for (const [id, v] of Object.entries(loud)) if (+v > 12) speaking.add(id)
+      paint()
+    }
+    if (d.gotChat) {
+      const c = d.gotChat
+      const text = String(c.msg || '').replace(/<[^>]*>/g, '').trim()
+      if (text) addMsg(clean(String(c.label || '').replace(/<[^>]*>/g, '').replace(/:\s*$/, '')) || 'guest', text)
+      if (!$('chat').classList.contains('open')) { $('chat').classList.add('open'); $('btnChat').className = 'on'; resize() }
+    }
+  })
+
+  // —— attendance: copy, or write into the Review Meeting page in the lineup ——
+  $('btnCopy').onclick = () => {
+    const line = attendanceLine()
+    navigator.clipboard.writeText(line).then(() => status('Copied: ' + line), () => status(line))
+  }
+  $('btnWrite').onclick = () => {
+    const line = attendanceLine()
+    let w = null
+    try { w = window.parent !== window && window.parent.wiki ? window.parent : null } catch { w = null }
+    if (!w) return status('Open this room inside the wiki (the Review Room page) with a Review Meeting page beside it, or copy the line: ' + line)
+    const $ = w.$
+    const $page = $('.page').filter((i, el) => /^Review Meeting \d{4}-W\d{2}$/.test((($(el).data('data') || {}).title) || '')).last()
+    if (!$page.length) return status('No Review Meeting page is open in the lineup. Open this week\'s meeting page beside the room, then write again. ' + line)
+    const $item = $page.find('.item.markdown').filter((i, el) => /^In the room\s*:/i.test((($(el).data('item') || {}).text) || '')).first()
+    if (!$item.length) return status('The meeting page has no "In the room:" line to write into. ' + line)
+    const item = { ...$item.data('item'), text: line }
+    if (!w.isOwner) status('Not the site owner in this browser: the line shows on your screen only and will not be saved. Log in as the owner, then write again.')
+    w.wiki.pageHandler.put($page, { type: 'edit', id: item.id, item })
+    $item.data('item', item)
+    $item.empty()
+    w.wiki.getPlugin('markdown', p => { p.emit($item, item); p.bind($item, item) })
+    if (w.isOwner) status('Written to ' + ($page.data('data') || {}).title + ': ' + line)
+  }
+
+  paint()
+  addEventListener('load', resize)
+})()
+</script>
+</body>
+</html>
