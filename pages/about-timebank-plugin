@@ -205,6 +205,11 @@
       "type": "markdown",
       "id": "a1b2c3d4e5001002",
       "text": "**Version:** 0.8.0\n\n**Built:** Sat, 26 Sep 2026\n\n**Change:** The house About convention. A summary ledger's owner is the site's stable [[About]] page \u2014 `OWNER: [[About]]`, and what a summary with no OWNER line means \u2014 and the plugin and the report tool read the owner's name from the Site Record there, the yaml code item starting `site:`. BALANCE works on About. The sample tool writes About, a page named for each owner and the domain page, and leaves the older About Name pages as pointers."
+    },
+    {
+      "type": "markdown",
+      "id": "9593168c6168e2c2",
+      "text": "**Version:** 0.9.0\n\n**Built:** Sun, 27 Sep 2026\n\n**Change:** The Review Deck. The Review Board draws as 16:9 slides in one 1280\u00d7720 frame, the size [[Wiki Deck]] uses: Weekly Review, hours given per member, planned against actual, shares of dynamic equity and the ledger check. `timebank-report.py --deck` writes them as pages, makes the week's Review Meeting page from the site's template and points the Review Room at that deck."
     }
   ],
   "journal": [
@@ -896,6 +901,18 @@
       },
       "date": 1790508989393,
       "provenance": "Edited by Claude Code (claude-opus-5-5) for wiki-plugin-timebank 0.9.0, the Review Meeting Plan."
+    },
+    {
+      "type": "add",
+      "id": "9593168c6168e2c2",
+      "item": {
+        "type": "markdown",
+        "id": "9593168c6168e2c2",
+        "text": "**Version:** 0.9.0\n\n**Built:** Sun, 27 Sep 2026\n\n**Change:** The Review Deck. The Review Board draws as 16:9 slides in one 1280\u00d7720 frame, the size [[Wiki Deck]] uses: Weekly Review, hours given per member, planned against actual, shares of dynamic equity and the ledger check. `timebank-report.py --deck` writes them as pages, makes the week's Review Meeting page from the site's template and points the Review Room at that deck."
+      },
+      "after": "a1b2c3d4e5001002",
+      "date": 1790511642091,
+      "provenance": "Added by Claude Code (claude-opus-5-5) when publishing wiki-plugin-timebank 0.9.0."
     }
   ],
   "plugin": "timebank"
