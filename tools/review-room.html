@@ -100,6 +100,7 @@
   const seen = new Map()      // streamID -> label, everyone seen this session: the attendance
   let now = new Map()         // streamID -> label, in the room right now
   const speaking = new Set()
+  let lastLoud = 0
 
   const resize = () => { if (framed) parent.postMessage({ action: 'resize', height: document.body.scrollHeight + 4 }, '*') }
   const send = msg => { if (feed && feed.contentWindow) feed.contentWindow.postMessage(msg, '*') }
@@ -131,7 +132,11 @@
     $('joinrow').hidden = true; $('controls').hidden = false
     mic = true; cam = false; paintButtons()
     status('Joining room ' + ROOM + ' as ' + myName + ' — allow the microphone (and camera) when the browser asks. Your camera stays off.')
-    poll = setInterval(() => send({ getStreamIDs: true }), 2500)
+    poll = setInterval(() => {
+      send({ getStreamIDs: true })
+      // loudness is piped only for streams present when asked, so ask again while it is silent
+      if (now.size && Date.now() - lastLoud > 5000) send({ getLoudness: true })
+    }, 2500)
     setTimeout(() => send({ getLoudness: true }), 2500)
     paint()
   }
@@ -182,7 +187,9 @@
         const name = clean(label) || id
         next.set(id, name); seen.set(id, name)
       }
+      const arrived = [...next.keys()].some(id => !now.has(id))
       now = next; paint()
+      if (arrived) send({ getLoudness: true })   // loudness covers the streams present when asked: ask again as people arrive
     }
     if (d.action === 'started-camera' || d.action === 'push-connection' || d.action === 'view-connection' || d.action === 'end-view-connection') {
       if (d.action === 'started-camera') { status('In room ' + ROOM + ' as ' + myName + '. Microphone on, camera off.'); if (!cam) send({ camera: false }); if (!mic) send({ mic: false }) }
@@ -190,9 +197,14 @@
     }
     const loud = d.loudness || (d.action === 'loudness' ? d.value : null)
     if (loud && typeof loud === 'object') {
-      speaking.clear()
-      for (const [id, v] of Object.entries(loud)) if (+v > 12) speaking.add(id)
-      paint()
+      if (Object.values(loud).some(v => +v > 0)) lastLoud = Date.now()
+      // each message may carry one stream or several: keep a level per stream
+      let changed = false
+      for (const [id, v] of Object.entries(loud)) {
+        const on = +v > 8
+        if (on !== speaking.has(id)) { changed = true; if (on) speaking.add(id); else speaking.delete(id) }
+      }
+      if (changed) paint()
     }
     if (d.gotChat) {
       const c = d.gotChat
